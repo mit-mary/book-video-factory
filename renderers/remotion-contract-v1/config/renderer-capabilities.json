@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0",
+  "renderer": {
+    "id": "remotion-contract-conformance-v1",
+    "version": "0.1.0-experimental"
+  },
+  "supported_contract_versions": ["1.0"],
+  "determinism": {
+    "level": "semantic",
+    "requires_seed": false,
+    "notes": "Frame, timing, asset and CLI inputs are frozen; encoded bytes are not promised cross-platform."
+  },
+  "constraints": {
+    "max_width": 2160,
+    "max_height": 3840,
+    "max_fps": 60,
+    "portable_paths_required": true
+  },
+  "capabilities": {
+    "still_images": {"supported": true, "version": "1.0", "constraints": {"fit": "contain", "remote_urls": false}, "determinism": "deterministic"},
+    "layered_images": {"supported": false, "version": "1.0", "constraints": {}, "determinism": "deterministic"},
+    "video_clips": {"supported": false, "version": "1.0", "constraints": {}, "determinism": "deterministic"},
+    "captions": {"supported": true, "version": "1.0", "constraints": {"timing": "sentence", "max_lines": 2, "word_highlight": false}, "determinism": "deterministic"},
+    "word_highlight": {"supported": false, "version": "1.0", "constraints": {}, "determinism": "deterministic"},
+    "camera_motion": {"supported": false, "version": "1.0", "constraints": {}, "determinism": "deterministic"},
+    "vector_overlays": {"supported": false, "version": "1.0", "constraints": {}, "determinism": "deterministic"},
+    "audio_playback": {"supported": true, "version": "1.0", "constraints": {"source": "final_mix_only", "volume": "unchanged"}, "determinism": "deterministic"},
+    "audio_mixing": {"supported": false, "version": "1.0", "constraints": {}, "determinism": "deterministic"},
+    "waveform": {"supported": false, "version": "1.0", "constraints": {}, "determinism": "deterministic"},
+    "transitions": {"supported": false, "version": "1.0", "constraints": {"supported": ["cut"]}, "determinism": "deterministic"},
+    "preview": {"supported": true, "version": "1.0", "constraints": {"same_timeline": true}, "determinism": "deterministic"},
+    "deterministic_render": {"supported": true, "version": "1.0", "constraints": {"level": "semantic"}, "determinism": "deterministic"}
+  },
+  "supported_extensions": {
+    "io.github.mit-mary.book-video-factory.remotion": {
+      "schema_versions": ["1.0"]
+    }
+  }
+}

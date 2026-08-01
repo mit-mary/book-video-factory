@@ -1,0 +1,37 @@
+{
+  "name": "remotion-contract-v1",
+  "version": "0.1.0-experimental",
+  "description": "Isolated Renderer Contract v1 conformance experiment",
+  "repository": {},
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "@remotion/captions": "4.0.503",
+    "@remotion/cli": "4.0.503",
+    "@remotion/fonts": "4.0.503",
+    "@remotion/media": "4.0.503",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "remotion": "4.0.503"
+  },
+  "devDependencies": {
+    "@remotion/eslint-config-flat": "4.0.503",
+    "@types/react": "19.2.7",
+    "@types/web": "0.0.166",
+    "eslint": "9.19.0",
+    "prettier": "3.8.1",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "dev": "remotion studio --no-open",
+    "build": "remotion bundle",
+    "upgrade": "remotion upgrade",
+    "lint": "eslint src && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "compositions": "node scripts/list-compositions.mjs"
+  },
+  "sideEffects": [
+    "*.css"
+  ]
+}
