@@ -18,7 +18,7 @@ const expectedRequestId = args.get("--expected-request-id");
 const expectedRequestHash = args.get("--expected-request-hash");
 const renderMode = args.get("--render-mode");
 
-if (compositionId !== "ContractConformanceV1" && compositionId !== "PaperCollageVisualV1") {
+if (compositionId !== "ContractConformanceV1" && compositionId !== "PaperCollageVisualV1" && compositionId !== "EditorialPaperCollageV1") {
   throw new Error("unsupported composition ID");
 }
 if (existsSync(outputPath)) throw new Error("output path already exists");

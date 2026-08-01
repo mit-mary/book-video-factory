@@ -32,7 +32,7 @@ const portable = (value: unknown, field: string): string => {
   return parsed;
 };
 
-const parseTheme = (value: unknown): PaperCollageTheme => {
+export const parsePaperCollageTheme = (value: unknown): PaperCollageTheme => {
   const theme = record(value, "theme.tokens");
   exactKeys(theme, ["schemaVersion", "canvas", "paperTexture", "imageCard", "caption", "motion", "transition"], "theme.tokens");
   if (theme.schemaVersion !== "paper-collage-theme-v1") {
@@ -147,7 +147,7 @@ export const parsePaperCollageProps = (value: unknown): PaperCollageProps => {
         assetId: string(theme.assetId, "theme.assetId"),
         src: portable(theme.src, "theme.src"),
         sha256: themeSha,
-        tokens: parseTheme(theme.tokens),
+        tokens: parsePaperCollageTheme(theme.tokens),
       },
       motionPreset: "subtle",
       transitionPreset: "paper-cut",

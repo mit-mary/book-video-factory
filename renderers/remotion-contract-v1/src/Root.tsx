@@ -1,8 +1,11 @@
 import { Composition } from "remotion";
 
 import { ContractConformance } from "./compositions/ContractConformance";
+import { EditorialPaperCollage } from "./compositions/EditorialPaperCollage";
 import { PaperCollageVisual } from "./compositions/PaperCollageVisual";
+import type { EditorialPaperCollageProps } from "./contract/editorial-paper-types";
 import { calculateContractMetadata } from "./metadata/calculate-metadata";
+import { calculateEditorialPaperMetadata } from "./metadata/calculate-editorial-paper-metadata";
 import { calculatePaperCollageMetadata } from "./metadata/calculate-paper-collage-metadata";
 import type { PaperCollageProps } from "./contract/paper-collage-types";
 import type { ContractProps } from "./contract/types";
@@ -122,6 +125,31 @@ const paperPlaceholderProps: PaperCollageProps = {
   },
 };
 
+const editorialPlaceholderProps: EditorialPaperCollageProps = {
+  ...paperPlaceholderProps,
+  rendererExtension: {
+    schemaVersion: "1.0",
+    compositionId: "EditorialPaperCollageV1",
+    template: {
+      id: "editorial-paper-collage-v1",
+      version: "0.1.0-experimental",
+    },
+    theme: paperPlaceholderProps.rendererExtension.theme,
+    motionPreset: "editorial-purposeful",
+    transitionPreset: "paper-cut-column-wipe",
+    captionPreset: "integrated-two-line",
+    requiredCapabilities: ["layered_images", "camera_motion", "transitions"],
+    layoutSequence: [
+      "split-column",
+      "scale-contrast",
+      "staggered-notes",
+      "full-bleed-turn",
+      "quiet-asymmetry",
+    ],
+    opening: paperPlaceholderProps.rendererExtension.opening,
+  },
+};
+
 export const RemotionRoot: React.FC = () => {
   return (
     <>
@@ -144,6 +172,16 @@ export const RemotionRoot: React.FC = () => {
         height={960}
         defaultProps={paperPlaceholderProps}
         calculateMetadata={calculatePaperCollageMetadata}
+      />
+      <Composition
+        id="EditorialPaperCollageV1"
+        component={EditorialPaperCollage}
+        durationInFrames={1}
+        fps={30}
+        width={720}
+        height={960}
+        defaultProps={editorialPlaceholderProps}
+        calculateMetadata={calculateEditorialPaperMetadata}
       />
     </>
   );

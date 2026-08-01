@@ -51,6 +51,16 @@ REMOTION_COMPOSITION_ID = "ContractConformanceV1"
 PAPER_COLLAGE_COMPOSITION_ID = "PaperCollageVisualV1"
 PAPER_COLLAGE_TEMPLATE_ID = "paper-collage-visual-v1"
 PAPER_COLLAGE_TEMPLATE_VERSION = "0.1.0-experimental"
+EDITORIAL_PAPER_COMPOSITION_ID = "EditorialPaperCollageV1"
+EDITORIAL_PAPER_TEMPLATE_ID = "editorial-paper-collage-v1"
+EDITORIAL_PAPER_TEMPLATE_VERSION = "0.1.0-experimental"
+EDITORIAL_PAPER_LAYOUTS = (
+    "split-column",
+    "scale-contrast",
+    "staggered-notes",
+    "full-bleed-turn",
+    "quiet-asymmetry",
+)
 _SAFE_ATTEMPT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _HEX_COLOR = re.compile(r"^#[0-9A-F]{6}$")
 _PAPER_BACKING_OFFSET_X = 9
@@ -626,6 +636,81 @@ class RemotionContractRenderer:
             issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, str(error), f"{field}.theme_tokens_asset_id", stage="validate"))
         return stable_issues(issues)
 
+    def _editorial_paper_issues(
+        self, request: RenderRequest, context: RenderExecutionContext, extension: Mapping[str, Any]
+    ) -> tuple[RenderIssue, ...]:
+        field = f"$.extensions.{REMOTION_EXTENSION}"
+        issues: list[RenderIssue] = []
+        expected = {
+            "schema_version", "composition_id", "audio_source", "visual_policy",
+            "caption_policy", "rights_holds", "template_id", "template_version",
+            "motion_preset", "transition_preset", "caption_preset",
+            "theme_tokens_asset_id", "theme_tokens_sha256", "texture_asset_id",
+            "texture_sha256", "layout_sequence", "opening",
+        }
+        if set(extension) != expected:
+            issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Editorial-paper extension contains missing or unknown fields.", field, stage="validate"))
+        if extension.get("template_id") != EDITORIAL_PAPER_TEMPLATE_ID or extension.get("template_version") != EDITORIAL_PAPER_TEMPLATE_VERSION:
+            issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unknown editorial-paper template identity.", f"{field}.template_id", stage="negotiate"))
+        if extension.get("visual_policy") != "editorial_paper_collage_five_layout_v1":
+            issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported editorial visual policy.", f"{field}.visual_policy", stage="negotiate"))
+        if extension.get("caption_policy") != "sentence_two_line_integrated_v1":
+            issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported editorial caption policy.", f"{field}.caption_policy", stage="negotiate"))
+        if extension.get("motion_preset") != "editorial-purposeful":
+            issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported editorial motion preset.", f"{field}.motion_preset", stage="negotiate"))
+        if extension.get("transition_preset") != "paper-cut-column-wipe":
+            issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported editorial transition preset.", f"{field}.transition_preset", stage="negotiate"))
+        if extension.get("caption_preset") != "integrated-two-line":
+            issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported editorial caption preset.", f"{field}.caption_preset", stage="negotiate"))
+        layouts = extension.get("layout_sequence")
+        if isinstance(layouts, (str, bytes)) or not isinstance(layouts, Sequence) or tuple(layouts) != EDITORIAL_PAPER_LAYOUTS:
+            issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Editorial layout sequence must bind the five approved Direction A layouts.", f"{field}.layout_sequence", stage="validate"))
+        required = set(request.renderer.required_capabilities)
+        for capability in ("layered_images", "camera_motion", "transitions"):
+            if capability not in required:
+                issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Template capability was not requested.", "$.renderer.required_capabilities", stage="negotiate", details={"capability": capability}))
+        opening = extension.get("opening")
+        if not isinstance(opening, Mapping) or set(opening) != {"start_tick", "end_tick", "title", "subtitle"}:
+            issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Opening declaration is missing or contains unknown fields.", f"{field}.opening", stage="validate"))
+        else:
+            start_tick = opening.get("start_tick")
+            end_tick = opening.get("end_tick")
+            if not isinstance(start_tick, int) or isinstance(start_tick, bool) or not isinstance(end_tick, int) or isinstance(end_tick, bool) or start_tick != 0 or end_tick - start_tick < 1000 or end_tick - start_tick > 1500 or end_tick > int(request.output_spec["duration_ticks"]):
+                issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Opening must cover 1.0-1.5 seconds from tick zero.", f"{field}.opening", stage="validate"))
+            if not isinstance(opening.get("title"), str) or not opening.get("title") or not isinstance(opening.get("subtitle"), str) or not opening.get("subtitle"):
+                issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Opening uses invalid controlled fixture text.", f"{field}.opening", stage="validate"))
+        try:
+            theme, _, _ = self._paper_theme(request, context)
+            width = int(request.output_spec["width"])
+            height = int(request.output_spec["height"])
+            if width < 600 or height < 800:
+                raise ValueError("editorial-paper canvas is below the validated minimum")
+            caption = theme["caption"]
+            caption_height = (
+                math.ceil(caption["font_size"] * caption["line_height_milli"] / 1000)
+                * caption["max_lines"]
+                + caption["padding_y"] * 2
+            )
+            if caption_height * 100 > height * 22:
+                raise ValueError("integrated caption exceeds 22 percent of canvas height")
+            for track in request.captions["tracks"]:
+                if int(track["style"]["max_lines"]) != 2:
+                    raise ValueError("caption max_lines must remain two")
+                safe = track["style"]["safe_area"]
+                if theme["canvas"]["safe_margin_x"] < max(int(safe["left_px"]), int(safe["right_px"])) or theme["canvas"]["safe_margin_bottom"] < int(safe["bottom_px"]):
+                    raise ValueError("theme cannot bypass the contract caption safe area")
+                if any(len(str(cue["text"]).split("\n")) > 2 for cue in track["cues"]):
+                    raise ValueError("caption exceeds the approved two-line limit")
+        except ContractValidationError as error:
+            issues.extend(error.issues)
+        except KeyError:
+            issues.append(_issue(RendererErrorCode.RENDER_ASSET_MISSING, "Theme token or staged texture binding is missing.", f"{field}.theme_tokens_asset_id", stage="validate"))
+        except FileNotFoundError:
+            issues.append(_issue(RendererErrorCode.RENDER_ASSET_MISSING, "Theme token file is missing.", f"{field}.theme_tokens_asset_id", stage="validate"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, str(error), f"{field}.theme_tokens_asset_id", stage="validate"))
+        return stable_issues(issues)
+
     def validate(
         self, request: RenderRequest, context: RenderExecutionContext
     ) -> tuple[RenderIssue, ...]:
@@ -650,12 +735,14 @@ class RemotionContractRenderer:
             issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Remotion extension is missing.", f"$.extensions.{REMOTION_EXTENSION}", stage="validate"))
         else:
             composition_id = extension.get("composition_id")
-            if extension.get("schema_version") != "1.0" or composition_id not in {REMOTION_COMPOSITION_ID, PAPER_COLLAGE_COMPOSITION_ID}:
+            if extension.get("schema_version") != "1.0" or composition_id not in {REMOTION_COMPOSITION_ID, PAPER_COLLAGE_COMPOSITION_ID, EDITORIAL_PAPER_COMPOSITION_ID}:
                 issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Remotion extension identity is invalid.", f"$.extensions.{REMOTION_EXTENSION}", stage="validate"))
             if extension.get("audio_source") != "final_mix_only":
                 issues.append(_issue(RendererErrorCode.RENDER_AUDIO_INVALID, "Remotion renderer only consumes final_mix.", f"$.extensions.{REMOTION_EXTENSION}.audio_source", stage="validate"))
             if composition_id == PAPER_COLLAGE_COMPOSITION_ID:
                 issues.extend(self._paper_issues(request, context, extension))
+            if composition_id == EDITORIAL_PAPER_COMPOSITION_ID:
+                issues.extend(self._editorial_paper_issues(request, context, extension))
         if request.audio.get("stem_usage") == "legacy_audio_mixing":
             issues.append(_issue(RendererErrorCode.RENDER_AUDIO_INVALID, "Remotion must not consume the legacy stem-mixing policy.", "$.audio.stem_usage", stage="validate"))
         for dimension in ("width", "height"):
@@ -802,7 +889,7 @@ class RemotionContractRenderer:
         for track in request.captions["tracks"]:
             asset_ids.add(str(track["style"]["font_asset_id"]))
         extension = request.extensions.get(REMOTION_EXTENSION)
-        if isinstance(extension, Mapping) and extension.get("composition_id") == PAPER_COLLAGE_COMPOSITION_ID:
+        if isinstance(extension, Mapping) and extension.get("composition_id") in {PAPER_COLLAGE_COMPOSITION_ID, EDITORIAL_PAPER_COMPOSITION_ID}:
             asset_ids.add(str(extension["theme_tokens_asset_id"]))
             asset_ids.add(str(extension["texture_asset_id"]))
         return tuple(sorted(asset_ids))
@@ -1007,6 +1094,84 @@ class RemotionContractRenderer:
                 "transitionPreset": str(extension["transition_preset"]),
                 "captionPreset": str(extension["caption_preset"]),
                 "requiredCapabilities": list(request.renderer.required_capabilities),
+                "opening": {
+                    "startFrame": _round_frame(int(opening["start_tick"]), fps),
+                    "endFrame": _round_frame(int(opening["end_tick"]), fps),
+                    "title": str(opening["title"]),
+                    "subtitle": str(opening["subtitle"]),
+                },
+            }
+        if extension["composition_id"] == EDITORIAL_PAPER_COMPOSITION_ID:
+            theme, theme_binding, texture_binding = self._paper_theme(request, context)
+            canvas = theme["canvas"]
+            texture = theme["paper_texture"]
+            image = theme["image_card"]
+            caption = theme["caption"]
+            motion = theme["motion"]
+            transition = theme["transition"]
+            opening = extension["opening"]
+            props["rendererExtension"] = {
+                "schemaVersion": "1.0",
+                "compositionId": EDITORIAL_PAPER_COMPOSITION_ID,
+                "template": {
+                    "id": EDITORIAL_PAPER_TEMPLATE_ID,
+                    "version": EDITORIAL_PAPER_TEMPLATE_VERSION,
+                },
+                "theme": {
+                    "assetId": theme_binding.asset_id,
+                    "src": public_refs[theme_binding.asset_id],
+                    "sha256": theme_binding.sha256,
+                    "tokens": {
+                        "schemaVersion": "paper-collage-theme-v1",
+                        "canvas": {
+                            "background": str(canvas["background"]),
+                            "ink": str(canvas["ink"]),
+                            "accent": str(canvas["accent"]),
+                            "safeMarginX": int(canvas["safe_margin_x"]),
+                            "safeMarginTop": int(canvas["safe_margin_top"]),
+                            "safeMarginBottom": int(canvas["safe_margin_bottom"]),
+                        },
+                        "paperTexture": {
+                            "assetId": texture_binding.asset_id,
+                            "src": public_refs[texture_binding.asset_id],
+                            "sha256": texture_binding.sha256,
+                            "opacityMilli": int(texture["opacity_milli"]),
+                        },
+                        "imageCard": {
+                            "maxWidth": int(image["max_width"]),
+                            "maxHeight": int(image["max_height"]),
+                            "padding": int(image["padding"]),
+                            "borderWidth": int(image["border_width"]),
+                            "shadowOffsetX": int(image["shadow_offset_x"]),
+                            "shadowOffsetY": int(image["shadow_offset_y"]),
+                            "rotationMillidegrees": int(image["rotation_millidegrees"]),
+                        },
+                        "caption": {
+                            "maxLines": int(caption["max_lines"]),
+                            "fontSize": int(caption["font_size"]),
+                            "lineHeightMilli": int(caption["line_height_milli"]),
+                            "paddingX": int(caption["padding_x"]),
+                            "paddingY": int(caption["padding_y"]),
+                            "background": str(caption["background"]),
+                            "text": str(caption["text"]),
+                        },
+                        "motion": {
+                            "maxScaleDeltaMilli": int(motion["max_scale_delta_milli"]),
+                            "maxTranslateX": int(motion["max_translate_x"]),
+                            "maxTranslateY": int(motion["max_translate_y"]),
+                            "maxRotationMillidegrees": int(motion["max_rotation_millidegrees"]),
+                        },
+                        "transition": {
+                            "durationFrames": int(transition["duration_frames"]),
+                            "maxTranslatePx": int(transition["max_translate_px"]),
+                        },
+                    },
+                },
+                "motionPreset": str(extension["motion_preset"]),
+                "transitionPreset": str(extension["transition_preset"]),
+                "captionPreset": str(extension["caption_preset"]),
+                "requiredCapabilities": list(request.renderer.required_capabilities),
+                "layoutSequence": list(extension["layout_sequence"]),
                 "opening": {
                     "startFrame": _round_frame(int(opening["start_tick"]), fps),
                     "endFrame": _round_frame(int(opening["end_tick"]), fps),
@@ -1219,12 +1384,20 @@ class RemotionContractRenderer:
                 "composition_id": composition_id,
                 **(
                     {
-                        "template_id": PAPER_COLLAGE_TEMPLATE_ID,
-                        "template_version": PAPER_COLLAGE_TEMPLATE_VERSION,
+                        "template_id": (
+                            EDITORIAL_PAPER_TEMPLATE_ID
+                            if composition_id == EDITORIAL_PAPER_COMPOSITION_ID
+                            else PAPER_COLLAGE_TEMPLATE_ID
+                        ),
+                        "template_version": (
+                            EDITORIAL_PAPER_TEMPLATE_VERSION
+                            if composition_id == EDITORIAL_PAPER_COMPOSITION_ID
+                            else PAPER_COLLAGE_TEMPLATE_VERSION
+                        ),
                         "theme_asset_id": str(extension["theme_tokens_asset_id"]),
                         "texture_asset_id": str(extension["texture_asset_id"]),
                     }
-                    if composition_id == PAPER_COLLAGE_COMPOSITION_ID
+                    if composition_id in {PAPER_COLLAGE_COMPOSITION_ID, EDITORIAL_PAPER_COMPOSITION_ID}
                     else {}
                 ),
                 "staging_ref": f"attempts/{context.attempt_id}",
@@ -1235,6 +1408,10 @@ class RemotionContractRenderer:
 
 
 __all__ = [
+    "EDITORIAL_PAPER_COMPOSITION_ID",
+    "EDITORIAL_PAPER_LAYOUTS",
+    "EDITORIAL_PAPER_TEMPLATE_ID",
+    "EDITORIAL_PAPER_TEMPLATE_VERSION",
     "PAPER_COLLAGE_COMPOSITION_ID",
     "PAPER_COLLAGE_TEMPLATE_ID",
     "PAPER_COLLAGE_TEMPLATE_VERSION",

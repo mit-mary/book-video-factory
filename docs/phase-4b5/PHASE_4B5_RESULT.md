@@ -2,42 +2,49 @@
 
 ## Status
 
-`WAITING_FOR_VISUAL_DIRECTION_APPROVAL`
+`DIRECTION_A_FROZEN_FIXTURE_VALIDATED`
 
-## Baseline and branch
+## Selection and scope
 
-- Baseline: `01e7bfa` (completed Phase 4B).
-- Branch: `codex/phase-4b5-visual-directions`.
-- Existing Remotion source changes: none.
-- Full video renders: none.
+- User selection: `A — Editorial Paper Collage`.
+- Mix boundary: pure A; no B or C template system was added.
+- Baseline: `19a3295` on `codex/phase-4b5-visual-directions`.
+- Implementation branch: `codex/phase-4b5-direction-a-template`.
+- Real books, Provider calls, stock downloads and commercial assets: none.
 
-## Delivered Stage 1 artifacts
+## Stage 3 implementation
 
-- Direction A: five 1080×1920 PNG keyframes.
-- Direction B: five 1080×1920 PNG keyframes.
-- Direction C: five 1080×1920 PNG keyframes.
-- Three 3300×1260 contact sheets.
-- Three text-free generated source-art atlases.
-- Reproducible static-frame compositor using local Noto Sans SC fonts.
+An independent opt-in `EditorialPaperCollageV1` Composition was added. `ContractConformanceV1` remains the default contract Composition and `PaperCollageVisualV1` remains available as the Phase 4B rollback point.
 
-Validation: 15/15 frames are RGB PNG at 1080×1920; contact-sheet count is 3; no MP4 exists under `docs/phase-4b5`.
+The selected template binds five layouts in a strict output-affecting extension:
 
-## Asset policy
+1. `split-column`
+2. `scale-contrast`
+3. `staggered-notes`
+4. `full-bleed-turn`
+5. `quiet-asymmetry`
 
-- Built-in image generation produced only text-free source artwork.
-- Chinese copy is a separate deterministic local-font layer.
-- No network stock asset, commercial cover, real-person portrait, logo or watermark is used.
-- No Provider was called to expand or rewrite the test copy.
-- All frames use only the approved synthetic test copy, apart from non-semantic board labels and frame numbers.
+The sequence is fail-closed, repeats cyclically across the 13 frozen segments and never assigns the same layout to adjacent segments. Caption presentation is integrated into each layout, sentence-level, two-line maximum and below the 22% height ceiling. Motion is layout-specific; only paper-cut and column-wipe entrance families are allowed.
 
-## Review summary
+## Stage 4 validation
 
-- A: strongest editorial layering and paper-collage identity; hardest to automate.
-- B: strongest caption integration and easiest automation; quieter hook.
-- C: strongest hook, spatial turn and conceptual identity; metaphor mapping requires editorial discipline.
+- Python regression: 181/181 PASS.
+- Node contract tests: 18/18 PASS.
+- TypeScript and ESLint: PASS.
+- Composition Discovery: PASS.
+- Preview render: succeeded.
+- Final experimental render: succeeded.
+- Five-layout static-frame review: PASS.
+- Prior `PaperCollageVisualV1` full Preview/Final regression: PASS; output SHA-256 values remained `a2717c3c...d64e8` and `d53c2f41...2dbf`, identical to the recorded Phase 4B baseline.
+- FFprobe/media contract comparison: PASS.
+- External technical QC: PASS.
+- Local Experimental Master: PASS.
+- Public release: HELD.
 
-Technical recommendation: C, or C with A’s editorial typography. This is not an approval decision.
+The authoritative run is `C:\Users\SSS\AppData\Local\Temp\book-video-factory-phase4b5-20260801-run3`.
 
-## Gate
+## Boundary result
 
-Phase 4B.5 is not marked passed and Phase 4C remains paused. Work stops here until the user explicitly chooses A, B, C or a mixed direction.
+Renderer Contract v1, Request/Hash/Attempt/Result/Handoff, Final Mix-only audio, staged asset hashes, External QC, Rights Hold and Legacy rollback remain intact. The Remotion renderer performs no audio mixing.
+
+The frozen fixture still uses program-generated geometric images. It validates layout and renderer behavior but is not evidence that real-book assets will have equivalent aesthetic quality. Phase 4C and real-book validation have not started.

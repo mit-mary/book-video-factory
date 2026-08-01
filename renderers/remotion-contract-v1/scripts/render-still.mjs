@@ -17,7 +17,7 @@ const compositionId = args.get("--composition-id");
 const expectedRequestHash = args.get("--expected-request-hash");
 const frame = Number(args.get("--frame"));
 
-if (compositionId !== "PaperCollageVisualV1") throw new Error("unsupported still Composition");
+if (compositionId !== "PaperCollageVisualV1" && compositionId !== "EditorialPaperCollageV1") throw new Error("unsupported still Composition");
 if (!Number.isInteger(frame) || frame < 0) throw new Error("frame must be a non-negative integer");
 if (existsSync(outputPath)) throw new Error("still output path already exists");
 const props = await parseContractPropsFile(propsPath);

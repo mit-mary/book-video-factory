@@ -119,7 +119,8 @@ export const parseContractProps = (value: unknown): ContractProps => {
   if (
     value.rendererExtension.schemaVersion !== "1.0" ||
     (value.rendererExtension.compositionId !== "ContractConformanceV1" &&
-      value.rendererExtension.compositionId !== "PaperCollageVisualV1")
+      value.rendererExtension.compositionId !== "PaperCollageVisualV1" &&
+      value.rendererExtension.compositionId !== "EditorialPaperCollageV1")
   ) {
     throw new Error("rendererExtension identity is invalid");
   }

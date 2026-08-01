@@ -6,6 +6,9 @@ import type { PaperCollageProps } from "../contract/paper-collage-types";
 export const calculatePaperCollageMetadata: CalculateMetadataFunction<PaperCollageProps> = ({
   props,
 }) => {
+  if (props.rendererExtension?.compositionId !== "PaperCollageVisualV1") {
+    return {};
+  }
   const parsed = parsePaperCollageProps(props);
   return {
     durationInFrames: parsed.durationInFrames,

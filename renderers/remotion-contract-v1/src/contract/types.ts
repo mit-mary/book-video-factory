@@ -2,7 +2,8 @@ import type { Caption } from "@remotion/captions";
 
 export type ContractCompositionId =
   | "ContractConformanceV1"
-  | "PaperCollageVisualV1";
+  | "PaperCollageVisualV1"
+  | "EditorialPaperCollageV1";
 
 export type ContractSegment = {
   segmentId: string;

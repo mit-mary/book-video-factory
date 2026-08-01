@@ -1,0 +1,124 @@
+from __future__ import annotations
+
+import json
+import sys
+import unittest
+from pathlib import Path
+
+
+PACKAGE = Path(__file__).resolve().parents[1]
+TESTS = Path(__file__).resolve().parent
+SRC = PACKAGE / "src"
+sys.path.insert(0, str(SRC))
+sys.path.insert(0, str(TESTS))
+
+from book_video_factory.renderer_contracts import (  # noqa: E402
+    RenderStatus,
+    render_request_to_dict,
+)
+from book_video_factory.renderers import (  # noqa: E402
+    EDITORIAL_PAPER_COMPOSITION_ID,
+    EDITORIAL_PAPER_LAYOUTS,
+    EDITORIAL_PAPER_TEMPLATE_ID,
+    EDITORIAL_PAPER_TEMPLATE_VERSION,
+    REMOTION_EXTENSION,
+)
+import test_paper_collage_renderer as phase4b_test  # noqa: E402
+
+
+FakeRunner = phase4b_test.FakeRunner
+rehash = phase4b_test.rehash
+
+
+def editorial_request(request: object) -> object:
+    payload = json.loads(json.dumps(render_request_to_dict(phase4b_test.paper_request(request))))
+    extension = payload["extensions"][REMOTION_EXTENSION]
+    extension.update(
+        {
+            "composition_id": EDITORIAL_PAPER_COMPOSITION_ID,
+            "visual_policy": "editorial_paper_collage_five_layout_v1",
+            "caption_policy": "sentence_two_line_integrated_v1",
+            "template_id": EDITORIAL_PAPER_TEMPLATE_ID,
+            "template_version": EDITORIAL_PAPER_TEMPLATE_VERSION,
+            "motion_preset": "editorial-purposeful",
+            "transition_preset": "paper-cut-column-wipe",
+            "caption_preset": "integrated-two-line",
+            "layout_sequence": list(EDITORIAL_PAPER_LAYOUTS),
+        }
+    )
+    return rehash(payload)
+
+
+def mutate(request: object, callback) -> object:
+    payload = json.loads(json.dumps(render_request_to_dict(request)))
+    callback(payload)
+    return rehash(payload)
+
+
+class EditorialPaperTemplateTests(unittest.TestCase):
+    def fixture(self):
+        helper = phase4b_test.phase4a_test.RemotionContractRendererTests()
+        temp, project, request, files, context = helper.fixture()
+        return helper, temp, project, editorial_request(request), files, context
+
+    def renderer(self, runner: FakeRunner):
+        return phase4b_test.phase4a_test.RemotionContractRendererTests().renderer(runner)
+
+    def cleanup_staging(self, context) -> None:
+        self.addCleanup(
+            lambda: __import__("shutil").rmtree(
+                phase4b_test.RENDERER_PROJECT / "public" / "attempts" / context.attempt_id,
+                ignore_errors=True,
+            )
+        )
+
+    def test_editorial_template_stages_assets_and_binds_five_layouts(self) -> None:
+        _, temp, _, request, _, context = self.fixture()
+        self.addCleanup(temp.cleanup)
+        result = self.renderer(FakeRunner()).render(request, context)
+        self.cleanup_staging(context)
+        self.assertEqual(result.status, RenderStatus.SUCCEEDED)
+        props = json.loads(
+            (context.attempts_directory / context.attempt_id / "remotion-props.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        extension = props["rendererExtension"]
+        self.assertEqual(extension["compositionId"], EDITORIAL_PAPER_COMPOSITION_ID)
+        self.assertEqual(extension["template"]["id"], EDITORIAL_PAPER_TEMPLATE_ID)
+        self.assertEqual(extension["layoutSequence"], list(EDITORIAL_PAPER_LAYOUTS))
+        self.assertEqual(len(set(extension["layoutSequence"])), 5)
+        result_extension = result.extensions[REMOTION_EXTENSION]
+        self.assertEqual(result_extension["template_id"], EDITORIAL_PAPER_TEMPLATE_ID)
+
+    def test_reordered_layout_sequence_is_fail_closed(self) -> None:
+        _, temp, _, request, _, context = self.fixture()
+        self.addCleanup(temp.cleanup)
+
+        def change(payload):
+            layouts = payload["extensions"][REMOTION_EXTENSION]["layout_sequence"]
+            layouts[0], layouts[1] = layouts[1], layouts[0]
+
+        request = mutate(request, change)
+        runner = FakeRunner()
+        result = self.renderer(runner).render(request, context)
+        self.assertNotEqual(result.status, RenderStatus.SUCCEEDED)
+        self.assertFalse(runner.called)
+
+    def test_bottom_card_caption_preset_is_rejected(self) -> None:
+        _, temp, _, request, _, context = self.fixture()
+        self.addCleanup(temp.cleanup)
+        request = mutate(
+            request,
+            lambda payload: payload["extensions"][REMOTION_EXTENSION].__setitem__(
+                "caption_preset", "bottom-card"
+            ),
+        )
+        runner = FakeRunner()
+        result = self.renderer(runner).render(request, context)
+        self.assertNotEqual(result.status, RenderStatus.SUCCEEDED)
+        self.assertFalse(runner.called)
+
+
+if __name__ == "__main__":
+    unittest.main()

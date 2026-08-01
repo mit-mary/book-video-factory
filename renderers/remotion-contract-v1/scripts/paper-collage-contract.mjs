@@ -67,7 +67,7 @@ const themeRanges = (theme) => {
   }
 };
 
-const parseTheme = (value) => {
+export const parsePaperCollageTheme = (value) => {
   const theme = record(value, "theme.tokens");
   exactKeys(theme, ["schemaVersion", "canvas", "paperTexture", "imageCard", "caption", "motion", "transition"], "theme.tokens");
   if (theme.schemaVersion !== "paper-collage-theme-v1") throw new Error("unsupported theme schema");
@@ -193,7 +193,7 @@ export const validatePaperCollageProps = (props) => {
   }
   if (!SHA256.test(themeRef.sha256 ?? "")) throw new Error("theme hash is invalid");
   portable(themeRef.src, "theme.src");
-  const theme = parseTheme(themeRef.tokens);
+  const theme = parsePaperCollageTheme(themeRef.tokens);
   const layout = computeLayout(props, theme);
   if (props.captionStyle?.maxLines !== 2) throw new Error("contract caption maxLines must remain two");
   if (theme.canvas.safeMarginX < Math.max(props.captionStyle.leftPx, props.captionStyle.rightPx) || theme.canvas.safeMarginBottom < props.captionStyle.bottomPx) throw new Error("theme cannot bypass contract caption safety");
