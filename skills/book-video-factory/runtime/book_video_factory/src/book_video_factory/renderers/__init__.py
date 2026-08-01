@@ -1,6 +1,9 @@
 """Experimental renderers that consume the stable Renderer Contract."""
 
 from .remotion_contract import (
+    PAPER_COLLAGE_COMPOSITION_ID,
+    PAPER_COLLAGE_TEMPLATE_ID,
+    PAPER_COLLAGE_TEMPLATE_VERSION,
     REMOTION_COMPOSITION_ID,
     REMOTION_EXTENSION,
     REMOTION_RENDERER_ID,
@@ -9,6 +12,9 @@ from .remotion_contract import (
 )
 
 __all__ = [
+    "PAPER_COLLAGE_COMPOSITION_ID",
+    "PAPER_COLLAGE_TEMPLATE_ID",
+    "PAPER_COLLAGE_TEMPLATE_VERSION",
     "REMOTION_COMPOSITION_ID",
     "REMOTION_EXTENSION",
     "REMOTION_RENDERER_ID",

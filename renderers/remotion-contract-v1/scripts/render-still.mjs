@@ -14,36 +14,29 @@ const root = resolve(here, "..");
 const propsPath = resolve(args.get("--props") ?? "");
 const outputPath = resolve(args.get("--output") ?? "");
 const compositionId = args.get("--composition-id");
-const expectedRequestId = args.get("--expected-request-id");
 const expectedRequestHash = args.get("--expected-request-hash");
-const renderMode = args.get("--render-mode");
+const frame = Number(args.get("--frame"));
 
-if (compositionId !== "ContractConformanceV1" && compositionId !== "PaperCollageVisualV1") {
-  throw new Error("unsupported composition ID");
-}
-if (existsSync(outputPath)) throw new Error("output path already exists");
+if (compositionId !== "PaperCollageVisualV1") throw new Error("unsupported still Composition");
+if (!Number.isInteger(frame) || frame < 0) throw new Error("frame must be a non-negative integer");
+if (existsSync(outputPath)) throw new Error("still output path already exists");
 const props = await parseContractPropsFile(propsPath);
-if (props.requestId !== expectedRequestId || props.requestHash !== expectedRequestHash) {
-  throw new Error("props Request identity mismatch");
-}
-if (props.renderMode !== renderMode) throw new Error("props renderMode mismatch");
 if (props.rendererExtension?.compositionId !== compositionId) {
   throw new Error("props Composition identity mismatch");
 }
+if (props.requestHash !== expectedRequestHash) throw new Error("props Request hash mismatch");
+if (frame >= props.durationInFrames) throw new Error("frame is outside the Composition duration");
 
 const cli = resolve(root, "node_modules", "@remotion", "cli", "remotion-cli.js");
 const command = [
   cli,
-  "render",
+  "still",
   resolve(root, "src", "index.ts"),
   compositionId,
   outputPath,
   `--props=${propsPath}`,
-  "--codec=h264",
-  "--audio-codec=aac",
-  "--pixel-format=yuv420p",
-  "--concurrency=2",
-  renderMode === "preview" ? "--crf=28" : "--crf=18",
+  `--frame=${frame}`,
+  "--image-format=png",
 ];
 const completed = spawnSync(process.execPath, command, {
   cwd: root,

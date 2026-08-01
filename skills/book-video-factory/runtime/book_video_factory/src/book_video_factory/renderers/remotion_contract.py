@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -44,10 +45,23 @@ from book_video_factory.renderer_contracts.paths import PortablePathError
 
 
 REMOTION_RENDERER_ID = "remotion-contract-conformance-v1"
-REMOTION_RENDERER_VERSION = "0.1.0-experimental"
+REMOTION_RENDERER_VERSION = "0.2.0-experimental"
 REMOTION_EXTENSION = "io.github.mit-mary.book-video-factory.remotion"
 REMOTION_COMPOSITION_ID = "ContractConformanceV1"
+PAPER_COLLAGE_COMPOSITION_ID = "PaperCollageVisualV1"
+PAPER_COLLAGE_TEMPLATE_ID = "paper-collage-visual-v1"
+PAPER_COLLAGE_TEMPLATE_VERSION = "0.1.0-experimental"
 _SAFE_ATTEMPT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_HEX_COLOR = re.compile(r"^#[0-9A-F]{6}$")
+_PAPER_BACKING_OFFSET_X = 9
+_PAPER_BACKING_OFFSET_Y = 11
+_PAPER_BACKING_ROTATION_FACTOR = 0.55
+_PAPER_CAPTION_OUTLINE = 2
+_PAPER_CAPTION_SHADOW_X = 7
+_PAPER_CAPTION_SHADOW_Y = 9
+_MIN_RENDERED_IMAGE_CARD = 240
+_IMAGE_CAPTION_GAP = 24
+_SEGMENT_MARKER_HEIGHT = 30
 
 
 def _utc_now() -> str:
@@ -109,6 +123,233 @@ def _plain(value: Any) -> Any:
 
 def _round_frame(ticks: int, fps: int) -> int:
     return (ticks * fps * 2 + 1000) // 2000
+
+
+def _exact_keys(value: Mapping[str, Any], expected: set[str], field: str) -> None:
+    if set(value) != expected:
+        raise ValueError(f"{field} contains missing or unknown fields")
+
+
+def _integer(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be an integer")
+    return value
+
+
+def _paper_theme_from_dict(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError("theme must be an object")
+    _exact_keys(
+        value,
+        {"schema_version", "canvas", "paper_texture", "image_card", "caption", "motion", "transition"},
+        "theme",
+    )
+    if value.get("schema_version") != "paper-collage-theme-v1":
+        raise ValueError("unsupported theme schema")
+    sections = {
+        "canvas": {"background", "ink", "accent", "safe_margin_x", "safe_margin_top", "safe_margin_bottom"},
+        "paper_texture": {"asset_id", "opacity_milli"},
+        "image_card": {"max_width", "max_height", "padding", "border_width", "shadow_offset_x", "shadow_offset_y", "rotation_millidegrees"},
+        "caption": {"max_lines", "font_size", "line_height_milli", "padding_x", "padding_y", "background", "text"},
+        "motion": {"max_scale_delta_milli", "max_translate_x", "max_translate_y", "max_rotation_millidegrees"},
+        "transition": {"duration_frames", "max_translate_px"},
+    }
+    parsed: dict[str, Any] = {"schema_version": "paper-collage-theme-v1"}
+    for section, keys in sections.items():
+        item = value.get(section)
+        if not isinstance(item, Mapping):
+            raise ValueError(f"theme.{section} must be an object")
+        _exact_keys(item, keys, f"theme.{section}")
+        parsed[section] = dict(item)
+    for field in ("background", "ink", "accent"):
+        if not isinstance(parsed["canvas"][field], str) or _HEX_COLOR.fullmatch(parsed["canvas"][field]) is None:
+            raise ValueError(f"theme.canvas.{field} must be an uppercase hex color")
+    for field in ("background", "text"):
+        if not isinstance(parsed["caption"][field], str) or _HEX_COLOR.fullmatch(parsed["caption"][field]) is None:
+            raise ValueError(f"theme.caption.{field} must be an uppercase hex color")
+    integer_fields = {
+        "canvas": ("safe_margin_x", "safe_margin_top", "safe_margin_bottom"),
+        "paper_texture": ("opacity_milli",),
+        "image_card": ("max_width", "max_height", "padding", "border_width", "shadow_offset_x", "shadow_offset_y", "rotation_millidegrees"),
+        "caption": ("max_lines", "font_size", "line_height_milli", "padding_x", "padding_y"),
+        "motion": ("max_scale_delta_milli", "max_translate_x", "max_translate_y", "max_rotation_millidegrees"),
+        "transition": ("duration_frames", "max_translate_px"),
+    }
+    for section, fields in integer_fields.items():
+        for field in fields:
+            parsed[section][field] = _integer(parsed[section][field], f"theme.{section}.{field}")
+    canvas = parsed["canvas"]
+    image = parsed["image_card"]
+    caption = parsed["caption"]
+    motion = parsed["motion"]
+    transition = parsed["transition"]
+    texture = parsed["paper_texture"]
+    if not (48 <= canvas["safe_margin_x"] <= 160 and 48 <= canvas["safe_margin_top"] <= 180 and 64 <= canvas["safe_margin_bottom"] <= 200):
+        raise ValueError("canvas safety token is outside the approved range")
+    if not (240 <= image["max_width"] <= 1200 and 240 <= image["max_height"] <= 1600 and 8 <= image["padding"] <= 40 and 1 <= image["border_width"] <= 6 and abs(image["shadow_offset_x"]) <= 24 and abs(image["shadow_offset_y"]) <= 24 and abs(image["rotation_millidegrees"]) <= 3000):
+        raise ValueError("image-card token is outside the approved range")
+    if not (caption["max_lines"] == 2 and 28 <= caption["font_size"] <= 64 and 1000 <= caption["line_height_milli"] <= 1500 and 16 <= caption["padding_x"] <= 56 and 12 <= caption["padding_y"] <= 36):
+        raise ValueError("caption token is outside the approved range")
+    if not (0 <= motion["max_scale_delta_milli"] <= 40 and abs(motion["max_translate_x"]) <= 20 and abs(motion["max_translate_y"]) <= 16 and abs(motion["max_rotation_millidegrees"]) <= 500):
+        raise ValueError("motion token is outside the approved range")
+    if not (1 <= transition["duration_frames"] <= 8 and abs(transition["max_translate_px"]) <= 20 and 0 <= texture["opacity_milli"] <= 250):
+        raise ValueError("transition or texture token is outside the approved range")
+    if not isinstance(texture["asset_id"], str) or not texture["asset_id"]:
+        raise ValueError("paper texture asset ID is invalid")
+    return parsed
+
+
+def _paper_layout(
+    width: int,
+    height: int,
+    theme: Mapping[str, Any],
+    safe_area: Mapping[str, Any],
+    captions: Sequence[str],
+) -> dict[str, dict[str, int]]:
+    canvas = theme["canvas"]
+    image = theme["image_card"]
+    caption = theme["caption"]
+    line_height = (caption["font_size"] * caption["line_height_milli"] + 999) // 1000
+    caption_height = line_height * 2 + caption["padding_y"] * 2
+    caption_right_extent = max(_PAPER_CAPTION_OUTLINE, _PAPER_CAPTION_SHADOW_X)
+    caption_bottom_extent = max(_PAPER_CAPTION_OUTLINE, _PAPER_CAPTION_SHADOW_Y)
+    caption_box = {
+        "x": canvas["safe_margin_x"] + _PAPER_CAPTION_OUTLINE,
+        "y": height - canvas["safe_margin_bottom"] - caption_height - caption_bottom_extent,
+        "width": width - canvas["safe_margin_x"] * 2 - _PAPER_CAPTION_OUTLINE - caption_right_extent,
+        "height": caption_height,
+    }
+    caption_envelope = {
+        "x": caption_box["x"] - _PAPER_CAPTION_OUTLINE,
+        "y": caption_box["y"] - _PAPER_CAPTION_OUTLINE,
+        "width": caption_box["width"] + _PAPER_CAPTION_OUTLINE + caption_right_extent,
+        "height": caption_box["height"] + _PAPER_CAPTION_OUTLINE + caption_bottom_extent,
+    }
+    safe_width = width - canvas["safe_margin_x"] * 2
+    image_region_bottom = caption_box["y"] - _IMAGE_CAPTION_GAP
+    available_image_height = image_region_bottom - canvas["safe_margin_top"]
+    desired_width = min(image["max_width"], safe_width)
+    desired_height = min(image["max_height"], available_image_height)
+
+    def envelope_for(box: Mapping[str, int]) -> dict[str, int]:
+        border = image["border_width"]
+        center_x = box["x"] + box["width"] / 2
+        center_y = box["y"] + box["height"] / 2
+        local_min_x = min(-border, image["shadow_offset_x"])
+        local_max_x = max(box["width"] + border, box["width"] + image["shadow_offset_x"])
+        local_min_y = min(-border, image["shadow_offset_y"])
+        local_max_y = max(box["height"] + border, box["height"] + image["shadow_offset_y"])
+        local_half_width = max(
+            abs(local_min_x - box["width"] / 2),
+            abs(local_max_x - box["width"] / 2),
+        )
+        local_half_height = max(
+            abs(local_min_y - box["height"] / 2),
+            abs(local_max_y - box["height"] / 2),
+        )
+        scale = 1 + theme["motion"]["max_scale_delta_milli"] / 1000
+        radians = math.radians(
+            (
+                abs(image["rotation_millidegrees"])
+                + abs(theme["motion"]["max_rotation_millidegrees"]) / 2
+            )
+            / 1000
+        )
+        cosine = math.cos(radians)
+        sine = math.sin(radians)
+        half_width = math.ceil(
+            scale * (local_half_width * cosine + local_half_height * sine)
+            + abs(theme["motion"]["max_translate_x"])
+            + abs(theme["transition"]["max_translate_px"])
+        )
+        half_height = math.ceil(
+            scale * (local_half_width * sine + local_half_height * cosine)
+            + abs(theme["motion"]["max_translate_y"])
+        )
+        main_left = math.floor(center_x - half_width)
+        main_top = math.floor(center_y - half_height)
+        main_right = math.ceil(center_x + half_width)
+        main_bottom = math.ceil(center_y + half_height)
+        backing_radians = math.radians(
+            abs(image["rotation_millidegrees"]) / 1000
+            * _PAPER_BACKING_ROTATION_FACTOR
+        )
+        backing_half_width = math.ceil(
+            box["width"] / 2 * math.cos(backing_radians)
+            + box["height"] / 2 * math.sin(backing_radians)
+        )
+        backing_half_height = math.ceil(
+            box["width"] / 2 * math.sin(backing_radians)
+            + box["height"] / 2 * math.cos(backing_radians)
+        )
+        backing_center_x = center_x + _PAPER_BACKING_OFFSET_X
+        backing_center_y = center_y + _PAPER_BACKING_OFFSET_Y
+        left = min(main_left, math.floor(backing_center_x - backing_half_width))
+        top = min(main_top, math.floor(backing_center_y - backing_half_height))
+        right = max(main_right, math.ceil(backing_center_x + backing_half_width))
+        bottom = max(main_bottom, math.ceil(backing_center_y + backing_half_height))
+        return {"x": left, "y": top, "width": right - left, "height": bottom - top}
+
+    image_box: dict[str, int] | None = None
+    image_envelope: dict[str, int] | None = None
+    for permille in range(1000, 0, -1):
+        candidate_width = desired_width * permille // 1000
+        candidate_height = desired_height * permille // 1000
+        if candidate_width < _MIN_RENDERED_IMAGE_CARD or candidate_height < _MIN_RENDERED_IMAGE_CARD:
+            break
+        candidate = {
+            "x": (width - candidate_width) // 2,
+            "y": canvas["safe_margin_top"] + (available_image_height - candidate_height) // 2,
+            "width": candidate_width,
+            "height": candidate_height,
+        }
+        envelope = envelope_for(candidate)
+        if (
+            envelope["x"] >= canvas["safe_margin_x"]
+            and envelope["y"] >= canvas["safe_margin_top"]
+            and envelope["x"] + envelope["width"] <= width - canvas["safe_margin_x"]
+            and envelope["y"] + envelope["height"] <= image_region_bottom
+            and candidate["y"] + candidate["height"] + 12 + _SEGMENT_MARKER_HEIGHT <= caption_box["y"]
+        ):
+            image_box = candidate
+            image_envelope = envelope
+            break
+
+    def within(box: Mapping[str, int]) -> bool:
+        return (
+            box["x"] >= canvas["safe_margin_x"]
+            and box["y"] >= canvas["safe_margin_top"]
+            and box["x"] + box["width"] <= width - canvas["safe_margin_x"]
+            and box["y"] + box["height"] <= height - canvas["safe_margin_bottom"]
+        )
+    if (
+        image_box is None
+        or image_envelope is None
+        or caption_box["width"] <= 0
+        or caption_box["height"] <= 0
+        or not within(image_box)
+        or not within(image_envelope)
+        or not within(caption_box)
+        or not within(caption_envelope)
+        or image_envelope["y"] + image_envelope["height"] > image_region_bottom
+    ):
+        raise ValueError("paper-collage layout escapes the contract safe area")
+    if canvas["safe_margin_x"] < max(int(safe_area["left_px"]), int(safe_area["right_px"])) or canvas["safe_margin_bottom"] < int(safe_area["bottom_px"]):
+        raise ValueError("theme cannot bypass the contract caption safe area")
+    inner_width = caption_box["width"] - caption["padding_x"] * 2
+    capacity = inner_width * 1000 // caption["font_size"]
+    def units(text: str) -> int:
+        return sum(1000 if ord(character) > 255 else 600 for character in text)
+    for text in captions:
+        lines = text.split("\n")
+        if len(lines) > 2 or any(units(line) > capacity for line in lines) or units("".join(lines)) > capacity * 2:
+            raise ValueError("caption exceeds the approved two-line box")
+    return {
+        "image_card": image_box,
+        "image_card_motion_envelope": image_envelope,
+        "caption_card": caption_box,
+        "caption_card_visual_envelope": caption_envelope,
+    }
 
 
 class RemotionFFprobeMediaProbe:
@@ -302,6 +543,89 @@ class RemotionContractRenderer:
             PortableRef(str(target.get("root", "")), str(target.get("path", "")))
         )
 
+    def _paper_theme(
+        self, request: RenderRequest, context: RenderExecutionContext
+    ) -> tuple[dict[str, Any], ArtifactBinding, ArtifactBinding]:
+        extension = request.extensions[REMOTION_EXTENSION]
+        assets = {item.asset_id: item for item in request.assets}
+        theme_id = str(extension["theme_tokens_asset_id"])
+        texture_id = str(extension["texture_asset_id"])
+        theme_binding = assets[theme_id]
+        texture_binding = assets[texture_id]
+        theme_path = context.resolver.resolve(theme_binding.ref, require_exists=True)
+        theme = _paper_theme_from_dict(json.loads(theme_path.read_text(encoding="utf-8")))
+        if theme_binding.sha256 != extension.get("theme_tokens_sha256"):
+            raise ContractValidationError(
+                (_issue(RendererErrorCode.RENDER_HASH_MISMATCH, "Theme token hash does not match its Request binding.", f"$.extensions.{REMOTION_EXTENSION}.theme_tokens_sha256", stage="validate"),)
+            )
+        if texture_binding.sha256 != extension.get("texture_sha256"):
+            raise ContractValidationError(
+                (_issue(RendererErrorCode.RENDER_HASH_MISMATCH, "Texture hash does not match its Request binding.", f"$.extensions.{REMOTION_EXTENSION}.texture_sha256", stage="validate"),)
+            )
+        if theme["paper_texture"]["asset_id"] != texture_id:
+            raise ValueError("theme texture identity differs from the Request")
+        return theme, theme_binding, texture_binding
+
+    def _paper_issues(
+        self, request: RenderRequest, context: RenderExecutionContext, extension: Mapping[str, Any]
+    ) -> tuple[RenderIssue, ...]:
+        field = f"$.extensions.{REMOTION_EXTENSION}"
+        issues: list[RenderIssue] = []
+        expected = {
+            "schema_version", "composition_id", "audio_source", "visual_policy",
+            "caption_policy", "rights_holds", "template_id", "template_version",
+            "motion_preset", "transition_preset", "caption_preset",
+            "theme_tokens_asset_id", "theme_tokens_sha256", "texture_asset_id",
+            "texture_sha256", "opening",
+        }
+        if set(extension) != expected:
+            issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Paper-collage extension contains missing or unknown fields.", field, stage="validate"))
+        if extension.get("template_id") != PAPER_COLLAGE_TEMPLATE_ID or extension.get("template_version") != PAPER_COLLAGE_TEMPLATE_VERSION:
+            issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unknown paper-collage template identity.", f"{field}.template_id", stage="negotiate"))
+        if extension.get("motion_preset") != "subtle":
+            issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported motion preset.", f"{field}.motion_preset", stage="negotiate"))
+        if extension.get("transition_preset") != "paper-cut":
+            issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported transition preset.", f"{field}.transition_preset", stage="negotiate"))
+        if extension.get("caption_preset") != "bottom-card":
+            issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported caption preset.", f"{field}.caption_preset", stage="negotiate"))
+        required = set(request.renderer.required_capabilities)
+        for capability in ("layered_images", "camera_motion", "transitions"):
+            if capability not in required:
+                issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Template capability was not requested.", "$.renderer.required_capabilities", stage="negotiate", details={"capability": capability}))
+        opening = extension.get("opening")
+        if not isinstance(opening, Mapping) or set(opening) != {"start_tick", "end_tick", "title", "subtitle"}:
+            issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Opening declaration is missing or contains unknown fields.", f"{field}.opening", stage="validate"))
+        else:
+            start_tick = opening.get("start_tick")
+            end_tick = opening.get("end_tick")
+            title = opening.get("title")
+            subtitle = opening.get("subtitle")
+            if not isinstance(start_tick, int) or isinstance(start_tick, bool) or not isinstance(end_tick, int) or isinstance(end_tick, bool) or start_tick != 0 or end_tick - start_tick < 1000 or end_tick - start_tick > 1500 or end_tick > int(request.output_spec["duration_ticks"]):
+                issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Opening must cover 1.0-1.5 seconds from tick zero.", f"{field}.opening", stage="validate"))
+            if not isinstance(title, str) or not title or len(title) > 80 or not isinstance(subtitle, str) or not subtitle or len(subtitle) > 120:
+                issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Opening uses invalid controlled fixture text.", f"{field}.opening", stage="validate"))
+        try:
+            theme, _, _ = self._paper_theme(request, context)
+            first_track = request.captions["tracks"][0]
+            if any(int(track["style"]["max_lines"]) > 2 for track in request.captions["tracks"]):
+                raise ValueError("caption max_lines exceeds two")
+            _paper_layout(
+                int(request.output_spec["width"]),
+                int(request.output_spec["height"]),
+                theme,
+                first_track["style"]["safe_area"],
+                tuple(str(cue["text"]) for track in request.captions["tracks"] for cue in track["cues"]),
+            )
+        except ContractValidationError as error:
+            issues.extend(error.issues)
+        except KeyError:
+            issues.append(_issue(RendererErrorCode.RENDER_ASSET_MISSING, "Theme token or staged texture binding is missing.", f"{field}.theme_tokens_asset_id", stage="validate"))
+        except FileNotFoundError:
+            issues.append(_issue(RendererErrorCode.RENDER_ASSET_MISSING, "Theme token file is missing.", f"{field}.theme_tokens_asset_id", stage="validate"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, str(error), f"{field}.theme_tokens_asset_id", stage="validate"))
+        return stable_issues(issues)
+
     def validate(
         self, request: RenderRequest, context: RenderExecutionContext
     ) -> tuple[RenderIssue, ...]:
@@ -325,10 +649,13 @@ class RemotionContractRenderer:
         if not isinstance(extension, Mapping):
             issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Remotion extension is missing.", f"$.extensions.{REMOTION_EXTENSION}", stage="validate"))
         else:
-            if extension.get("schema_version") != "1.0" or extension.get("composition_id") != REMOTION_COMPOSITION_ID:
+            composition_id = extension.get("composition_id")
+            if extension.get("schema_version") != "1.0" or composition_id not in {REMOTION_COMPOSITION_ID, PAPER_COLLAGE_COMPOSITION_ID}:
                 issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Remotion extension identity is invalid.", f"$.extensions.{REMOTION_EXTENSION}", stage="validate"))
             if extension.get("audio_source") != "final_mix_only":
                 issues.append(_issue(RendererErrorCode.RENDER_AUDIO_INVALID, "Remotion renderer only consumes final_mix.", f"$.extensions.{REMOTION_EXTENSION}.audio_source", stage="validate"))
+            if composition_id == PAPER_COLLAGE_COMPOSITION_ID:
+                issues.extend(self._paper_issues(request, context, extension))
         if request.audio.get("stem_usage") == "legacy_audio_mixing":
             issues.append(_issue(RendererErrorCode.RENDER_AUDIO_INVALID, "Remotion must not consume the legacy stem-mixing policy.", "$.audio.stem_usage", stage="validate"))
         for dimension in ("width", "height"):
@@ -474,6 +801,10 @@ class RemotionContractRenderer:
         asset_ids.add(str(request.audio["final_mix_asset_id"]))
         for track in request.captions["tracks"]:
             asset_ids.add(str(track["style"]["font_asset_id"]))
+        extension = request.extensions.get(REMOTION_EXTENSION)
+        if isinstance(extension, Mapping) and extension.get("composition_id") == PAPER_COLLAGE_COMPOSITION_ID:
+            asset_ids.add(str(extension["theme_tokens_asset_id"]))
+            asset_ids.add(str(extension["texture_asset_id"]))
         return tuple(sorted(asset_ids))
 
     def _stage_assets(
@@ -571,7 +902,7 @@ class RemotionContractRenderer:
         final_mix = next(item for item in request.assets if item.asset_id == final_mix_id)
         safe_area = first_track["style"]["safe_area"]
         extension = request.extensions[REMOTION_EXTENSION]
-        return {
+        props = {
             "schemaVersion": "1.0",
             "requestId": request.request_id,
             "requestHash": request.request_hash,
@@ -606,6 +937,84 @@ class RemotionContractRenderer:
                 "compositionId": str(extension["composition_id"]),
             },
         }
+        if extension["composition_id"] == PAPER_COLLAGE_COMPOSITION_ID:
+            theme, theme_binding, texture_binding = self._paper_theme(request, context)
+            canvas = theme["canvas"]
+            texture = theme["paper_texture"]
+            image = theme["image_card"]
+            caption = theme["caption"]
+            motion = theme["motion"]
+            transition = theme["transition"]
+            opening = extension["opening"]
+            props["rendererExtension"] = {
+                "schemaVersion": "1.0",
+                "compositionId": PAPER_COLLAGE_COMPOSITION_ID,
+                "template": {
+                    "id": PAPER_COLLAGE_TEMPLATE_ID,
+                    "version": PAPER_COLLAGE_TEMPLATE_VERSION,
+                },
+                "theme": {
+                    "assetId": theme_binding.asset_id,
+                    "src": public_refs[theme_binding.asset_id],
+                    "sha256": theme_binding.sha256,
+                    "tokens": {
+                        "schemaVersion": "paper-collage-theme-v1",
+                        "canvas": {
+                            "background": str(canvas["background"]),
+                            "ink": str(canvas["ink"]),
+                            "accent": str(canvas["accent"]),
+                            "safeMarginX": int(canvas["safe_margin_x"]),
+                            "safeMarginTop": int(canvas["safe_margin_top"]),
+                            "safeMarginBottom": int(canvas["safe_margin_bottom"]),
+                        },
+                        "paperTexture": {
+                            "assetId": texture_binding.asset_id,
+                            "src": public_refs[texture_binding.asset_id],
+                            "sha256": texture_binding.sha256,
+                            "opacityMilli": int(texture["opacity_milli"]),
+                        },
+                        "imageCard": {
+                            "maxWidth": int(image["max_width"]),
+                            "maxHeight": int(image["max_height"]),
+                            "padding": int(image["padding"]),
+                            "borderWidth": int(image["border_width"]),
+                            "shadowOffsetX": int(image["shadow_offset_x"]),
+                            "shadowOffsetY": int(image["shadow_offset_y"]),
+                            "rotationMillidegrees": int(image["rotation_millidegrees"]),
+                        },
+                        "caption": {
+                            "maxLines": int(caption["max_lines"]),
+                            "fontSize": int(caption["font_size"]),
+                            "lineHeightMilli": int(caption["line_height_milli"]),
+                            "paddingX": int(caption["padding_x"]),
+                            "paddingY": int(caption["padding_y"]),
+                            "background": str(caption["background"]),
+                            "text": str(caption["text"]),
+                        },
+                        "motion": {
+                            "maxScaleDeltaMilli": int(motion["max_scale_delta_milli"]),
+                            "maxTranslateX": int(motion["max_translate_x"]),
+                            "maxTranslateY": int(motion["max_translate_y"]),
+                            "maxRotationMillidegrees": int(motion["max_rotation_millidegrees"]),
+                        },
+                        "transition": {
+                            "durationFrames": int(transition["duration_frames"]),
+                            "maxTranslatePx": int(transition["max_translate_px"]),
+                        },
+                    },
+                },
+                "motionPreset": str(extension["motion_preset"]),
+                "transitionPreset": str(extension["transition_preset"]),
+                "captionPreset": str(extension["caption_preset"]),
+                "requiredCapabilities": list(request.renderer.required_capabilities),
+                "opening": {
+                    "startFrame": _round_frame(int(opening["start_tick"]), fps),
+                    "endFrame": _round_frame(int(opening["end_tick"]), fps),
+                    "title": str(opening["title"]),
+                    "subtitle": str(opening["subtitle"]),
+                },
+            }
+        return props
 
     def _probe_issues(
         self, request: RenderRequest, probe: Mapping[str, Any]
@@ -665,6 +1074,7 @@ class RemotionContractRenderer:
             )
         output_path = self._output_path(request, context)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        composition_id = str(request.extensions[REMOTION_EXTENSION]["composition_id"])
         command = [
             self._node,
             str(self._project / "scripts" / "render-contract.mjs"),
@@ -673,7 +1083,7 @@ class RemotionContractRenderer:
             "--output",
             str(output_path),
             "--composition-id",
-            REMOTION_COMPOSITION_ID,
+            composition_id,
             "--expected-request-id",
             request.request_id,
             "--expected-request-hash",
@@ -806,7 +1216,17 @@ class RemotionContractRenderer:
             qc_handoff=qc_handoff,
             logs=logs,
             extension_details={
-                "composition_id": REMOTION_COMPOSITION_ID,
+                "composition_id": composition_id,
+                **(
+                    {
+                        "template_id": PAPER_COLLAGE_TEMPLATE_ID,
+                        "template_version": PAPER_COLLAGE_TEMPLATE_VERSION,
+                        "theme_asset_id": str(extension["theme_tokens_asset_id"]),
+                        "texture_asset_id": str(extension["texture_asset_id"]),
+                    }
+                    if composition_id == PAPER_COLLAGE_COMPOSITION_ID
+                    else {}
+                ),
                 "staging_ref": f"attempts/{context.attempt_id}",
                 "props_asset_id": "remotion-props",
                 "staging_manifest_asset_id": "staging-manifest",
@@ -815,6 +1235,9 @@ class RemotionContractRenderer:
 
 
 __all__ = [
+    "PAPER_COLLAGE_COMPOSITION_ID",
+    "PAPER_COLLAGE_TEMPLATE_ID",
+    "PAPER_COLLAGE_TEMPLATE_VERSION",
     "REMOTION_COMPOSITION_ID",
     "REMOTION_EXTENSION",
     "REMOTION_RENDERER_ID",

@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 
+import { validatePaperCollageProps } from "./paper-collage-contract.mjs";
+
 const SHA256 = /^[0-9a-f]{64}$/;
 
 export const parseContractPropsFile = async (path) => {
@@ -18,8 +20,10 @@ export const parseContractPropsFile = async (path) => {
   if (!Array.isArray(value.segments) || !Array.isArray(value.captions)) {
     throw new Error("segments and captions must be arrays");
   }
-  if (value.rendererExtension?.compositionId !== "ContractConformanceV1") {
+  const compositionId = value.rendererExtension?.compositionId;
+  if (compositionId !== "ContractConformanceV1" && compositionId !== "PaperCollageVisualV1") {
     throw new Error("composition identity mismatch");
   }
+  if (compositionId === "PaperCollageVisualV1") validatePaperCollageProps(value);
   return value;
 };
