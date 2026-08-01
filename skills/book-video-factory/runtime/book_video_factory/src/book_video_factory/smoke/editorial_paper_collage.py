@@ -43,6 +43,7 @@ from .legacy_v4_real_media import (
     _probe,
     _sha256,
     _shared_assets,
+    _write_pcm_wave,
     _write_json,
 )
 from .paper_collage_real_media import _external_qc, _paper_request
@@ -58,6 +59,29 @@ from .remotion_contract_real_media import (
 
 MARKER_NAME = "EDITORIAL_PAPER_SMOKE_FIXTURE.json"
 FIXTURE_TYPE = "editorial-paper-collage-frozen-fixture-experiment"
+VISUAL_DURATION_TICKS = 18_000
+VISUAL_SEGMENTS = (
+    (
+        "HOOK",
+        "改变生活的，\n通常不是一个重大决定。",
+    ),
+    (
+        "SMALL_ACTION",
+        "真正起作用的，\n往往只是一个很小的动作。",
+    ),
+    (
+        "THREE_ACTIONS",
+        "早睡十分钟。拒绝一次迎合。\n承认自己的不舒服。",
+    ),
+    (
+        "TURNING",
+        "生活不会突然改变，\n它只是慢慢转向。",
+    ),
+    (
+        "ENDING",
+        "你今天的一个小选择，\n可能正在改变以后的人生。",
+    ),
+)
 
 
 def initialize_fixture_root(root: Path) -> Path:
@@ -70,11 +94,13 @@ def initialize_fixture_root(root: Path) -> Path:
         {
             "fixture": True,
             "fixture_type": FIXTURE_TYPE,
-            "version": "1",
+            "version": "2",
             "production_use": False,
             "generated_assets_only": True,
             "provider_calls_allowed": False,
             "selected_direction": "A",
+            "visual_asset": "direction-a-text-free-art-atlas",
+            "duration_ticks": VISUAL_DURATION_TICKS,
         },
     )
 
@@ -88,11 +114,13 @@ def validate_fixture_root(root: Path) -> dict[str, Any]:
     expected = {
         "fixture": True,
         "fixture_type": FIXTURE_TYPE,
-        "version": "1",
+        "version": "2",
         "production_use": False,
         "generated_assets_only": True,
         "provider_calls_allowed": False,
         "selected_direction": "A",
+        "visual_asset": "direction-a-text-free-art-atlas",
+        "duration_ticks": VISUAL_DURATION_TICKS,
     }
     if marker != expected:
         raise SmokeFixtureError("Phase 4B.5 fixture marker does not match")
@@ -125,6 +153,99 @@ def _editorial_request(
         mode=mode,
     )
     payload = render_request_to_dict(paper)
+    atlas_root = renderer.parents[1] / "docs" / "phase-4b5" / "visual-directions" / "source-assets"
+    atlas_path = atlas_root / "direction-a-art-atlas.png"
+    if not atlas_path.is_file():
+        raise SmokeFixtureError("Direction A text-free art atlas is missing")
+    payload["roots"]["phase4b5_visual_assets"] = {
+        "kind": "artifact",
+        "input_access": "read_only",
+        "output_access": "none",
+    }
+    payload["assets"].append(
+        {
+            "asset_id": "direction-a-art-atlas",
+            "role": "approved_direction_a_visual_atlas",
+            "ref": {
+                "root": "phase4b5_visual_assets",
+                "path": "direction-a-art-atlas.png",
+            },
+            "bytes": atlas_path.stat().st_size,
+            "sha256": _sha256(atlas_path),
+            "media_type": "image/png",
+            "source_manifest_artifact_id": "phase4b5:direction-a-art-atlas",
+            "rights_ref": "fixture:built-in-image-generation-direction-a",
+        }
+    )
+    segment_duration = VISUAL_DURATION_TICKS // len(VISUAL_SEGMENTS)
+    timeline_segments = []
+    caption_cues = []
+    for index, (segment_id, text) in enumerate(VISUAL_SEGMENTS):
+        start_tick = index * segment_duration
+        end_tick = (index + 1) * segment_duration
+        cue_id = f"direction-a-caption-{index + 1:02d}"
+        timeline_segments.append(
+            {
+                "segment_id": segment_id,
+                "start_tick": start_tick,
+                "end_tick": end_tick,
+                "visual": {
+                    "kind": "still",
+                    "asset_ids": ["direction-a-art-atlas"],
+                    "motion": "none",
+                },
+                "narration": None,
+                "caption_cue_ids": [cue_id],
+                "overlay_ids": [],
+                "transition": {"in": "cut", "out": "cut"},
+                "metadata": {
+                    "scene_ids": ["DIRECTION_A_ATLAS"],
+                    "script_line_ids": [cue_id],
+                },
+            }
+        )
+        caption_cues.append(
+            {
+                "cue_id": cue_id,
+                "segment_id": segment_id,
+                "start_tick": start_tick + 180,
+                "end_tick": end_tick - 180,
+                "text": text,
+                "granularity": "sentence",
+                "words": [],
+                "highlight": None,
+            }
+        )
+    payload["timeline"] = {
+        "model": "narration_segments_v1",
+        "timebase": {"ticks_per_second": 1000},
+        "duration_ticks": VISUAL_DURATION_TICKS,
+        "frame_rounding": "integer_round_half_up_v1",
+        "segments": timeline_segments,
+    }
+    payload["captions"] = {
+        "tracks": [
+            {
+                "track_id": "direction-a-synthetic-zh-CN",
+                "language": "zh-CN",
+                "text_source_asset_id": "approved-script",
+                "timing_source_asset_id": "asr-timing",
+                "alignment_revision": 1,
+                "style": {
+                    "font_asset_id": "font-chinese",
+                    "font_role": "caption-chinese-fixture",
+                    "safe_area": {"left_px": 72, "right_px": 72, "bottom_px": 104},
+                    "max_lines": 2,
+                    "overflow_policy": "fail",
+                    "line_break_policy": "contract-two-line-v1",
+                    "highlight_tokens": {},
+                },
+                "cues": caption_cues,
+            }
+        ]
+    }
+    payload["audio"]["cues"] = []
+    payload["output_spec"]["duration_ticks"] = VISUAL_DURATION_TICKS
     extension = payload["extensions"][REMOTION_EXTENSION]
     extension.update(
         {
@@ -140,8 +261,8 @@ def _editorial_request(
             "opening": {
                 "start_tick": 0,
                 "end_tick": 1200,
-                "title": "SMALL CHOICES",
-                "subtitle": "CONTROLLED DIRECTION A FIXTURE",
+                "title": "改变生活的",
+                "subtitle": "通常不是一个重大决定。",
             },
         }
     )
@@ -162,14 +283,29 @@ def _editorial_request(
     payload["metadata"] = {
         "created_at": "2026-08-01T04:30:00Z",
         "created_by": "phase4b5-direction-a-fixture-adapter-v1",
-        "notes": "Frozen non-production fixture for the selected Editorial Paper Collage direction.",
+        "notes": "Visual-validation fixture using the approved text-free Direction A atlas and synthetic Chinese copy.",
     }
     payload["request_hash"] = "0" * 64
     payload["request_id"] = "pending"
     digest = semantic_request_hash(payload)
     payload["request_hash"] = digest
     payload["request_id"] = request_id_from_hash(digest)
-    return render_request_from_dict(payload), resolver
+    expanded_resolver = RootResolver(
+        {**resolver.bindings, "phase4b5_visual_assets": atlas_root.resolve()}
+    )
+    return render_request_from_dict(payload), expanded_resolver
+
+
+def _visual_validation_final_mix(project: Path) -> Path:
+    target = project / "06_music_音乐" / "phase4b5-direction-a-final-mix.wav"
+    _write_pcm_wave(
+        target,
+        duration_seconds=18,
+        frequency_hz=260,
+        amplitude=2400,
+        three_sections=True,
+    )
+    return target
 
 
 def _composition_discovery(renderer: Path, props_path: Path) -> dict[str, Any]:
@@ -282,6 +418,20 @@ def _render_layout_stills(
         and props["captionStyle"]["maxLines"] == 2,
         "transition_types_at_most_two": props["rendererExtension"]["transitionPreset"]
         == "paper-cut-column-wipe",
+        "direction_a_atlas_only_visual": all(
+            segment["visualRefs"]
+            == [
+                f"attempts/{props['attemptId']}/assets/direction-a-art-atlas.png"
+            ]
+            for segment in segments
+        ),
+        "synthetic_chinese_copy_present": all(
+            any(character > "\u007f" for character in caption["text"])
+            for caption in props["captions"]
+        ),
+        "duration_between_15_and_20_seconds": 15 * int(props["fps"])
+        <= int(props["durationInFrames"])
+        <= 20 * int(props["fps"]),
     }
     report = {
         "schema_version": "1.0",
@@ -305,7 +455,7 @@ def run_experiment(fixture_root: Path, renderer_project: Path) -> dict[str, Any]
     shared, shared_record = _shared_assets(root)
     project, semantic = _create_project(root, shared, "fixture-editorial-direction-a")
     _record_phase4a_approvals(project)
-    final_mix = _final_mix(project)
+    final_mix = _visual_validation_final_mix(project)
     snapshot, snapshot_path, compatibility, compatibility_path, bindings = _derived_snapshot(
         project, runtime, final_mix
     )
@@ -401,8 +551,16 @@ def run_experiment(fixture_root: Path, renderer_project: Path) -> dict[str, Any]
             "legacy_modified": False,
             "default_renderer_changed": False,
             "real_book_used": False,
+            "geometric_scene_assets_used_by_timeline": False,
+            "direction_a_text_free_atlas_used": True,
             "word_highlight": False,
             "waveform_or_hud": False,
+        },
+        "visual_validation": {
+            "direction_status": "DIRECTION_A_APPROVED",
+            "template_status": "REMOTION_TEMPLATE_VISUAL_VALIDATION_PENDING_USER_REVIEW",
+            "machine_checks_passed": static_frames["report"]["passed"],
+            "user_visual_approval_recorded": False,
         },
         "passed": passed,
     }
@@ -412,12 +570,14 @@ def run_experiment(fixture_root: Path, renderer_project: Path) -> dict[str, Any]
     human.write_text(
         "\n".join(
             [
-                "# Phase 4B.5 Direction A Frozen-Fixture Report",
+                "# Phase 4B.5 Direction A Visual-Validation Report",
                 "",
-                f"- Result: {'PASS' if passed else 'FAIL'}",
+                f"- Technical result: {'PASS' if passed else 'FAIL'}",
+                "- Direction status: DIRECTION_A_APPROVED",
+                "- Template status: REMOTION_TEMPLATE_VISUAL_VALIDATION_PENDING_USER_REVIEW",
                 f"- Preview: {results['preview']['result']['status']}",
                 f"- Final: {results['final']['result']['status']}",
-                f"- Five-layout still review: {'PASS' if static_frames['report']['passed'] else 'FAIL'}",
+                f"- Five-layout composition machine check: {'PASS' if static_frames['report']['passed'] else 'FAIL'}",
                 f"- Technical QC: {final_qc['technical_status']}",
                 f"- Public release allowed: {str(final_qc['public_release_allowed']).lower()}",
                 f"- Rights hold: {RIGHTS_HOLD}",

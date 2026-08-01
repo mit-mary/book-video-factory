@@ -1,13 +1,15 @@
 import {
   AbsoluteFill,
   Easing,
-  Img,
   interpolate,
-  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 
+import {
+  DIRECTION_A_HOOK_CROP,
+  DirectionAAtlasCrop,
+} from "./EditorialPaperScene";
 import type { EditorialPaperCollageProps } from "../contract/editorial-paper-types";
 import type { PaperCollageTheme } from "../contract/paper-collage-types";
 
@@ -25,7 +27,14 @@ export const EditorialOpening: React.FC<{
     <AbsoluteFill style={{ backgroundColor: theme.canvas.background }}>
       <div style={{ position: "absolute", left: "5%", top: "7%", width: "60%", height: "84%", overflow: "hidden", clipPath: "polygon(0 2%, 97% 0, 100% 97%, 3% 100%)" }}>
         {source ? (
-          <Img src={staticFile(source)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <DirectionAAtlasCrop
+            name="Opening torn-paper crop"
+            source={source}
+            crop={DIRECTION_A_HOOK_CROP}
+            targetWidth={width * 0.6}
+            targetHeight={height * 0.84}
+            drift={3}
+          />
         ) : null}
       </div>
       <div

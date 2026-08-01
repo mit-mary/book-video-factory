@@ -14,7 +14,12 @@ const ensureFont = (family: string, source: string): void => {
   if (!fontLoads.has(key)) {
     fontLoads.set(
       key,
-      loadFont({ family, url: staticFile(source), display: "block" }),
+      loadFont({
+        family,
+        url: staticFile(source),
+        display: "block",
+        format: source.toLowerCase().endsWith(".ttc") ? "truetype" : undefined,
+      }),
     );
   }
 };
