@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { parseContractPropsFile } from "../scripts/contract-props.mjs";
-import { EDITORIAL_LAYOUTS } from "../scripts/editorial-paper-contract.mjs";
+import { EDITORIAL_SCENE_SEQUENCE } from "../scripts/editorial-paper-contract.mjs";
 
 const hash = "a".repeat(64);
 
@@ -16,7 +16,7 @@ const validProps = () => ({
   attemptId: "phase4b5-node-test",
   renderMode: "final",
   width: 720,
-  height: 960,
+  height: 1280,
   fps: 30,
   durationInFrames: 360,
   segments: [
@@ -33,7 +33,7 @@ const validProps = () => ({
   rendererExtension: {
     schemaVersion: "1.0",
     compositionId: "EditorialPaperCollageV1",
-    template: { id: "editorial-paper-collage-v1", version: "0.1.0-experimental" },
+    template: { id: "editorial-paper-collage-v1", version: "0.2.0-experimental" },
     theme: {
       assetId: "paper-collage-theme-v1",
       src: "attempts/a/assets/theme.json",
@@ -48,11 +48,11 @@ const validProps = () => ({
         transition: { durationFrames: 6, maxTranslatePx: 12 },
       },
     },
-    motionPreset: "editorial-purposeful",
-    transitionPreset: "paper-cut-column-wipe",
-    captionPreset: "integrated-two-line",
+    motionPreset: "editorial-unified-v1",
+    transitionPreset: "hard-cut-paper-reveal",
+    captionPreset: "fixed-safe-zone-two-line",
     requiredCapabilities: ["layered_images", "camera_motion", "transitions"],
-    layoutSequence: [...EDITORIAL_LAYOUTS],
+    sceneTypeSequence: [...EDITORIAL_SCENE_SEQUENCE],
     opening: { startFrame: 0, endFrame: 36, title: "TEST TITLE", subtitle: "CONTROLLED FIXTURE" },
   },
 });
@@ -68,20 +68,17 @@ const parse = async (props) => {
   }
 };
 
-test("accepts the strict Direction A layout contract", async () => {
+test("accepts the unified Direction A scene system", async () => {
   const parsed = await parse(validProps());
   assert.equal(parsed.rendererExtension.compositionId, "EditorialPaperCollageV1");
-  assert.deepEqual(parsed.rendererExtension.layoutSequence, EDITORIAL_LAYOUTS);
-  assert.equal(new Set(parsed.rendererExtension.layoutSequence).size, 5);
+  assert.deepEqual(parsed.rendererExtension.sceneTypeSequence, EDITORIAL_SCENE_SEQUENCE);
+  assert.equal(new Set(parsed.rendererExtension.sceneTypeSequence).size, 3);
 });
 
-test("rejects a reordered or repeated Direction A layout sequence", async () => {
+test("rejects a reordered Direction A scene sequence", async () => {
   const reordered = validProps();
-  [reordered.rendererExtension.layoutSequence[0], reordered.rendererExtension.layoutSequence[1]] = [reordered.rendererExtension.layoutSequence[1], reordered.rendererExtension.layoutSequence[0]];
-  await assert.rejects(parse(reordered), /layoutSequence/);
-  const repeated = validProps();
-  repeated.rendererExtension.layoutSequence[4] = repeated.rendererExtension.layoutSequence[0];
-  await assert.rejects(parse(repeated), /layoutSequence/);
+  [reordered.rendererExtension.sceneTypeSequence[0], reordered.rendererExtension.sceneTypeSequence[1]] = [reordered.rendererExtension.sceneTypeSequence[1], reordered.rendererExtension.sceneTypeSequence[0]];
+  await assert.rejects(parse(reordered), /sceneTypeSequence/);
 });
 
 test("rejects caption and preset regressions", async () => {
@@ -96,5 +93,24 @@ test("rejects caption and preset regressions", async () => {
 test("rejects a canvas below the validated editorial minimum", async () => {
   const props = validProps();
   props.width = 400;
-  await assert.rejects(parse(props), /validated minimum/);
+  await assert.rejects(parse(props), /9:16/);
+});
+
+test("rejects the legacy 3:4 canvas", async () => {
+  const props = validProps();
+  props.height = 960;
+  await assert.rejects(parse(props), /9:16/);
+});
+
+test("rejects the legacy five-layout extension", async () => {
+  const props = validProps();
+  props.rendererExtension.layoutSequence = [
+    "split-column",
+    "scale-contrast",
+    "staggered-notes",
+    "full-bleed-turn",
+    "quiet-asymmetry",
+  ];
+  delete props.rendererExtension.sceneTypeSequence;
+  await assert.rejects(parse(props), /missing or unknown fields/);
 });

@@ -127,24 +127,26 @@ const paperPlaceholderProps: PaperCollageProps = {
 
 const editorialPlaceholderProps: EditorialPaperCollageProps = {
   ...paperPlaceholderProps,
+  width: 720,
+  height: 1280,
   rendererExtension: {
     schemaVersion: "1.0",
     compositionId: "EditorialPaperCollageV1",
     template: {
       id: "editorial-paper-collage-v1",
-      version: "0.1.0-experimental",
+      version: "0.2.0-experimental",
     },
     theme: paperPlaceholderProps.rendererExtension.theme,
-    motionPreset: "editorial-purposeful",
-    transitionPreset: "paper-cut-column-wipe",
-    captionPreset: "integrated-two-line",
+    motionPreset: "editorial-unified-v1",
+    transitionPreset: "hard-cut-paper-reveal",
+    captionPreset: "fixed-safe-zone-two-line",
     requiredCapabilities: ["layered_images", "camera_motion", "transitions"],
-    layoutSequence: [
-      "split-column",
-      "scale-contrast",
-      "staggered-notes",
-      "full-bleed-turn",
-      "quiet-asymmetry",
+    sceneTypeSequence: [
+      "full-bleed-metaphor",
+      "editorial-detail",
+      "sequential-build",
+      "full-bleed-metaphor",
+      "full-bleed-metaphor",
     ],
     opening: paperPlaceholderProps.rendererExtension.opening,
   },
@@ -179,7 +181,7 @@ export const RemotionRoot: React.FC = () => {
         durationInFrames={1}
         fps={30}
         width={720}
-        height={960}
+        height={1280}
         defaultProps={editorialPlaceholderProps}
         calculateMetadata={calculateEditorialPaperMetadata}
       />

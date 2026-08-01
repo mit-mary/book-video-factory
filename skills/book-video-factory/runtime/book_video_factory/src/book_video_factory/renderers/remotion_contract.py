@@ -53,13 +53,13 @@ PAPER_COLLAGE_TEMPLATE_ID = "paper-collage-visual-v1"
 PAPER_COLLAGE_TEMPLATE_VERSION = "0.1.0-experimental"
 EDITORIAL_PAPER_COMPOSITION_ID = "EditorialPaperCollageV1"
 EDITORIAL_PAPER_TEMPLATE_ID = "editorial-paper-collage-v1"
-EDITORIAL_PAPER_TEMPLATE_VERSION = "0.1.0-experimental"
-EDITORIAL_PAPER_LAYOUTS = (
-    "split-column",
-    "scale-contrast",
-    "staggered-notes",
-    "full-bleed-turn",
-    "quiet-asymmetry",
+EDITORIAL_PAPER_TEMPLATE_VERSION = "0.2.0-experimental"
+EDITORIAL_PAPER_SCENE_SEQUENCE = (
+    "full-bleed-metaphor",
+    "editorial-detail",
+    "sequential-build",
+    "full-bleed-metaphor",
+    "full-bleed-metaphor",
 )
 _SAFE_ATTEMPT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _HEX_COLOR = re.compile(r"^#[0-9A-F]{6}$")
@@ -646,25 +646,25 @@ class RemotionContractRenderer:
             "caption_policy", "rights_holds", "template_id", "template_version",
             "motion_preset", "transition_preset", "caption_preset",
             "theme_tokens_asset_id", "theme_tokens_sha256", "texture_asset_id",
-            "texture_sha256", "layout_sequence", "opening",
+            "texture_sha256", "scene_type_sequence", "opening",
         }
         if set(extension) != expected:
             issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Editorial-paper extension contains missing or unknown fields.", field, stage="validate"))
         if extension.get("template_id") != EDITORIAL_PAPER_TEMPLATE_ID or extension.get("template_version") != EDITORIAL_PAPER_TEMPLATE_VERSION:
             issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unknown editorial-paper template identity.", f"{field}.template_id", stage="negotiate"))
-        if extension.get("visual_policy") != "editorial_paper_collage_five_layout_v1":
+        if extension.get("visual_policy") != "editorial_unified_three_scene_types_v1":
             issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported editorial visual policy.", f"{field}.visual_policy", stage="negotiate"))
-        if extension.get("caption_policy") != "sentence_two_line_integrated_v1":
+        if extension.get("caption_policy") != "sentence_two_line_fixed_safe_zone_v1":
             issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported editorial caption policy.", f"{field}.caption_policy", stage="negotiate"))
-        if extension.get("motion_preset") != "editorial-purposeful":
+        if extension.get("motion_preset") != "editorial-unified-v1":
             issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported editorial motion preset.", f"{field}.motion_preset", stage="negotiate"))
-        if extension.get("transition_preset") != "paper-cut-column-wipe":
+        if extension.get("transition_preset") != "hard-cut-paper-reveal":
             issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported editorial transition preset.", f"{field}.transition_preset", stage="negotiate"))
-        if extension.get("caption_preset") != "integrated-two-line":
+        if extension.get("caption_preset") != "fixed-safe-zone-two-line":
             issues.append(_issue(RendererErrorCode.RENDER_CAPABILITY_UNSUPPORTED, "Unsupported editorial caption preset.", f"{field}.caption_preset", stage="negotiate"))
-        layouts = extension.get("layout_sequence")
-        if isinstance(layouts, (str, bytes)) or not isinstance(layouts, Sequence) or tuple(layouts) != EDITORIAL_PAPER_LAYOUTS:
-            issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Editorial layout sequence must bind the five approved Direction A layouts.", f"{field}.layout_sequence", stage="validate"))
+        scene_types = extension.get("scene_type_sequence")
+        if isinstance(scene_types, (str, bytes)) or not isinstance(scene_types, Sequence) or tuple(scene_types) != EDITORIAL_PAPER_SCENE_SEQUENCE:
+            issues.append(_issue(RendererErrorCode.RENDER_INPUT_INVALID, "Editorial scene sequence must bind the unified Direction A system.", f"{field}.scene_type_sequence", stage="validate"))
         required = set(request.renderer.required_capabilities)
         for capability in ("layered_images", "camera_motion", "transitions"):
             if capability not in required:
@@ -683,16 +683,16 @@ class RemotionContractRenderer:
             theme, _, _ = self._paper_theme(request, context)
             width = int(request.output_spec["width"])
             height = int(request.output_spec["height"])
-            if width < 600 or height < 800:
-                raise ValueError("editorial-paper canvas is below the validated minimum")
+            if width < 720 or height < 1280 or width * 16 != height * 9:
+                raise ValueError("editorial-paper canvas must be 9:16 at 720x1280 or larger")
             caption = theme["caption"]
             caption_height = (
                 math.ceil(caption["font_size"] * caption["line_height_milli"] / 1000)
                 * caption["max_lines"]
                 + caption["padding_y"] * 2
             )
-            if caption_height * 100 > height * 22:
-                raise ValueError("integrated caption exceeds 22 percent of canvas height")
+            if caption_height * 100 > height * 20:
+                raise ValueError("fixed caption exceeds 20 percent of canvas height")
             for track in request.captions["tracks"]:
                 if int(track["style"]["max_lines"]) != 2:
                     raise ValueError("caption max_lines must remain two")
@@ -1171,7 +1171,7 @@ class RemotionContractRenderer:
                 "transitionPreset": str(extension["transition_preset"]),
                 "captionPreset": str(extension["caption_preset"]),
                 "requiredCapabilities": list(request.renderer.required_capabilities),
-                "layoutSequence": list(extension["layout_sequence"]),
+                "sceneTypeSequence": list(extension["scene_type_sequence"]),
                 "opening": {
                     "startFrame": _round_frame(int(opening["start_tick"]), fps),
                     "endFrame": _round_frame(int(opening["end_tick"]), fps),
@@ -1409,7 +1409,7 @@ class RemotionContractRenderer:
 
 __all__ = [
     "EDITORIAL_PAPER_COMPOSITION_ID",
-    "EDITORIAL_PAPER_LAYOUTS",
+    "EDITORIAL_PAPER_SCENE_SEQUENCE",
     "EDITORIAL_PAPER_TEMPLATE_ID",
     "EDITORIAL_PAPER_TEMPLATE_VERSION",
     "PAPER_COLLAGE_COMPOSITION_ID",

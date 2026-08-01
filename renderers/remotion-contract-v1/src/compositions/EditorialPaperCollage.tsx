@@ -2,8 +2,8 @@ import { loadFont } from "@remotion/fonts";
 import { Audio } from "@remotion/media";
 import { AbsoluteFill, Img, Sequence, staticFile, useVideoConfig } from "remotion";
 
-import { EditorialOpening } from "../components/EditorialOpening";
 import { EditorialPaperScene } from "../components/EditorialPaperScene";
+import { UnifiedCaption } from "../components/editorial-unified/UnifiedCaption";
 import { parseEditorialPaperProps } from "../contract/parse-editorial-paper";
 import type { EditorialPaperCollageProps } from "../contract/editorial-paper-types";
 
@@ -48,39 +48,23 @@ export const EditorialPaperCollage: React.FC<EditorialPaperCollageProps> = (
           from={segment.startFrame}
           durationInFrames={segment.endFrame - segment.startFrame}
           premountFor={Math.min(fps, segment.startFrame)}
-          name={`Editorial ${String(index + 1).padStart(2, "0")} ${props.rendererExtension.layoutSequence[index % props.rendererExtension.layoutSequence.length]}`}
+          name={`Unified scene ${String(index + 1).padStart(2, "0")} ${props.rendererExtension.sceneTypeSequence[index % props.rendererExtension.sceneTypeSequence.length]}`}
         >
           <EditorialPaperScene
             segment={segment}
             segmentIndex={index}
             durationInFrames={segment.endFrame - segment.startFrame}
-            captions={props.captions}
             family={props.font.family}
-            layout={
-              props.rendererExtension.layoutSequence[
-                index % props.rendererExtension.layoutSequence.length
+            sceneType={
+              props.rendererExtension.sceneTypeSequence[
+                index % props.rendererExtension.sceneTypeSequence.length
               ]
             }
             theme={theme}
           />
         </Sequence>
       ))}
-      <Sequence
-        from={props.rendererExtension.opening.startFrame}
-        durationInFrames={
-          props.rendererExtension.opening.endFrame -
-          props.rendererExtension.opening.startFrame
-        }
-        premountFor={Math.min(fps, props.rendererExtension.opening.startFrame)}
-        name="Editorial Opening Hook"
-      >
-        <EditorialOpening
-          family={props.font.family}
-          source={props.segments[0]?.visualRefs[0]}
-          theme={theme}
-          opening={props.rendererExtension.opening}
-        />
-      </Sequence>
+      <UnifiedCaption captions={props.captions} family={props.font.family} theme={theme} />
       <Audio src={staticFile(props.audio.src)} />
     </AbsoluteFill>
   );

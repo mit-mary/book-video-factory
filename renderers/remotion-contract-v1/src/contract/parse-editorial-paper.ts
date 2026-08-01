@@ -1,6 +1,6 @@
-import { EDITORIAL_LAYOUTS } from "./editorial-paper-types";
+import { EDITORIAL_SCENE_SEQUENCE } from "./editorial-paper-types";
 import type {
-  EditorialLayout,
+  EditorialSceneType,
   EditorialPaperCollageProps,
 } from "./editorial-paper-types";
 import { exactKeys, validateThemeRanges } from "./paper-collage-layout";
@@ -37,20 +37,19 @@ const integer = (value: unknown, field: string): number => {
   return value as number;
 };
 
-const parseLayouts = (value: unknown): EditorialLayout[] => {
-  if (!Array.isArray(value) || value.length !== EDITORIAL_LAYOUTS.length) {
-    throw new Error("layoutSequence must bind exactly five layouts");
+const parseSceneTypes = (value: unknown): EditorialSceneType[] => {
+  if (!Array.isArray(value) || value.length !== EDITORIAL_SCENE_SEQUENCE.length) {
+    throw new Error("sceneTypeSequence must bind exactly five scenes");
   }
-  const layouts = value.map((item, index) =>
-    string(item, `layoutSequence[${index}]`),
+  const sceneTypes = value.map((item, index) =>
+    string(item, `sceneTypeSequence[${index}]`),
   );
   if (
-    layouts.some((item, index) => item !== EDITORIAL_LAYOUTS[index]) ||
-    new Set(layouts).size !== EDITORIAL_LAYOUTS.length
+    sceneTypes.some((item, index) => item !== EDITORIAL_SCENE_SEQUENCE[index])
   ) {
-    throw new Error("layoutSequence must match the approved Direction A order");
+    throw new Error("sceneTypeSequence must match the unified Direction A order");
   }
-  return layouts as EditorialLayout[];
+  return sceneTypes as EditorialSceneType[];
 };
 
 export const parseEditorialPaperProps = (
@@ -70,7 +69,7 @@ export const parseEditorialPaperProps = (
       "transitionPreset",
       "captionPreset",
       "requiredCapabilities",
-      "layoutSequence",
+      "sceneTypeSequence",
       "opening",
     ],
     "rendererExtension",
@@ -89,17 +88,17 @@ export const parseEditorialPaperProps = (
   exactKeys(opening, ["startFrame", "endFrame", "title", "subtitle"], "rendererExtension.opening");
   if (
     template.id !== "editorial-paper-collage-v1" ||
-    template.version !== "0.1.0-experimental"
+    template.version !== "0.2.0-experimental"
   ) {
     throw new Error("unknown editorial-paper template identity");
   }
-  if (extension.motionPreset !== "editorial-purposeful") {
+  if (extension.motionPreset !== "editorial-unified-v1") {
     throw new Error("unsupported editorial motion preset");
   }
-  if (extension.transitionPreset !== "paper-cut-column-wipe") {
+  if (extension.transitionPreset !== "hard-cut-paper-reveal") {
     throw new Error("unsupported editorial transition preset");
   }
-  if (extension.captionPreset !== "integrated-two-line") {
+  if (extension.captionPreset !== "fixed-safe-zone-two-line") {
     throw new Error("unsupported editorial caption preset");
   }
   if (!Array.isArray(extension.requiredCapabilities)) {
@@ -128,15 +127,19 @@ export const parseEditorialPaperProps = (
   ) {
     throw new Error("opening must cover 1.0-1.5 seconds from frame zero");
   }
-  if (base.width < 600 || base.height < 800) {
-    throw new Error("editorial-paper canvas is below the validated minimum");
+  if (
+    base.width < 720 ||
+    base.height < 1280 ||
+    base.width * 16 !== base.height * 9
+  ) {
+    throw new Error("editorial-paper canvas must be 9:16 at 720x1280 or larger");
   }
   const captionHeight =
     Math.ceil((tokens.caption.fontSize * tokens.caption.lineHeightMilli) / 1000) *
       tokens.caption.maxLines +
     tokens.caption.paddingY * 2;
-  if (captionHeight * 100 > base.height * 22 || base.captionStyle.maxLines !== 2) {
-    throw new Error("integrated caption exceeds the 22 percent/two-line contract");
+  if (captionHeight * 100 > base.height * 20 || base.captionStyle.maxLines !== 2) {
+    throw new Error("fixed caption exceeds the 20 percent/two-line contract");
   }
   if (
     tokens.canvas.safeMarginX <
@@ -157,7 +160,7 @@ export const parseEditorialPaperProps = (
       compositionId: "EditorialPaperCollageV1",
       template: {
         id: "editorial-paper-collage-v1",
-        version: "0.1.0-experimental",
+        version: "0.2.0-experimental",
       },
       theme: {
         assetId: string(theme.assetId, "theme.assetId"),
@@ -165,11 +168,11 @@ export const parseEditorialPaperProps = (
         sha256: themeSha,
         tokens,
       },
-      motionPreset: "editorial-purposeful",
-      transitionPreset: "paper-cut-column-wipe",
-      captionPreset: "integrated-two-line",
+      motionPreset: "editorial-unified-v1",
+      transitionPreset: "hard-cut-paper-reveal",
+      captionPreset: "fixed-safe-zone-two-line",
       requiredCapabilities,
-      layoutSequence: parseLayouts(extension.layoutSequence),
+      sceneTypeSequence: parseSceneTypes(extension.sceneTypeSequence),
       opening: {
         startFrame: openingStart,
         endFrame: openingEnd,

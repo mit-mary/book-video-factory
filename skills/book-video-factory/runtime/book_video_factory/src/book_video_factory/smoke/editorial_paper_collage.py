@@ -1,4 +1,4 @@
-"""Phase 4B.5 frozen-fixture validation for EditorialPaperCollageV1."""
+"""Phase 4B.6 unified-system validation for EditorialPaperCollageV1."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from book_video_factory.renderer_contracts import (
 )
 from book_video_factory.renderers import (
     EDITORIAL_PAPER_COMPOSITION_ID,
-    EDITORIAL_PAPER_LAYOUTS,
+    EDITORIAL_PAPER_SCENE_SEQUENCE,
     EDITORIAL_PAPER_TEMPLATE_ID,
     EDITORIAL_PAPER_TEMPLATE_VERSION,
     REMOTION_EXTENSION,
@@ -57,28 +57,38 @@ from .remotion_contract_real_media import (
 )
 
 
-MARKER_NAME = "EDITORIAL_PAPER_SMOKE_FIXTURE.json"
-FIXTURE_TYPE = "editorial-paper-collage-frozen-fixture-experiment"
+MARKER_NAME = "EDITORIAL_UNIFIED_SMOKE_FIXTURE.json"
+FIXTURE_TYPE = "editorial-paper-unified-system-fixture-experiment"
 VISUAL_DURATION_TICKS = 18_000
 VISUAL_SEGMENTS = (
     (
         "HOOK",
+        0,
+        3_000,
         "改变生活的，\n通常不是一个重大决定。",
     ),
     (
         "SMALL_ACTION",
+        3_000,
+        6_000,
         "真正起作用的，\n往往只是一个很小的动作。",
     ),
     (
         "THREE_ACTIONS",
+        6_000,
+        11_000,
         "早睡十分钟。拒绝一次迎合。\n承认自己的不舒服。",
     ),
     (
         "TURNING",
+        11_000,
+        14_000,
         "生活不会突然改变，\n它只是慢慢转向。",
     ),
     (
         "ENDING",
+        14_000,
+        18_000,
         "你今天的一个小选择，\n可能正在改变以后的人生。",
     ),
 )
@@ -94,7 +104,7 @@ def initialize_fixture_root(root: Path) -> Path:
         {
             "fixture": True,
             "fixture_type": FIXTURE_TYPE,
-            "version": "2",
+            "version": "3",
             "production_use": False,
             "generated_assets_only": True,
             "provider_calls_allowed": False,
@@ -110,11 +120,11 @@ def validate_fixture_root(root: Path) -> dict[str, Any]:
     try:
         marker = json.loads((resolved / MARKER_NAME).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise SmokeFixtureError("Phase 4B.5 fixture marker is missing or unreadable") from error
+        raise SmokeFixtureError("Phase 4B.6 fixture marker is missing or unreadable") from error
     expected = {
         "fixture": True,
         "fixture_type": FIXTURE_TYPE,
-        "version": "2",
+            "version": "3",
         "production_use": False,
         "generated_assets_only": True,
         "provider_calls_allowed": False,
@@ -123,7 +133,7 @@ def validate_fixture_root(root: Path) -> dict[str, Any]:
         "duration_ticks": VISUAL_DURATION_TICKS,
     }
     if marker != expected:
-        raise SmokeFixtureError("Phase 4B.5 fixture marker does not match")
+        raise SmokeFixtureError("Phase 4B.6 fixture marker does not match")
     if (resolved / "project.json").exists():
         raise SmokeFixtureError("fixture root must not be a production Project root")
     return marker
@@ -157,7 +167,7 @@ def _editorial_request(
     atlas_path = atlas_root / "direction-a-art-atlas.png"
     if not atlas_path.is_file():
         raise SmokeFixtureError("Direction A text-free art atlas is missing")
-    payload["roots"]["phase4b5_visual_assets"] = {
+    payload["roots"]["phase4b6_visual_assets"] = {
         "kind": "artifact",
         "input_access": "read_only",
         "output_access": "none",
@@ -167,7 +177,7 @@ def _editorial_request(
             "asset_id": "direction-a-art-atlas",
             "role": "approved_direction_a_visual_atlas",
             "ref": {
-                "root": "phase4b5_visual_assets",
+                "root": "phase4b6_visual_assets",
                 "path": "direction-a-art-atlas.png",
             },
             "bytes": atlas_path.stat().st_size,
@@ -177,13 +187,25 @@ def _editorial_request(
             "rights_ref": "fixture:built-in-image-generation-direction-a",
         }
     )
-    segment_duration = VISUAL_DURATION_TICKS // len(VISUAL_SEGMENTS)
     timeline_segments = []
     caption_cues = []
-    for index, (segment_id, text) in enumerate(VISUAL_SEGMENTS):
-        start_tick = index * segment_duration
-        end_tick = (index + 1) * segment_duration
-        cue_id = f"direction-a-caption-{index + 1:02d}"
+    for index, (segment_id, start_tick, end_tick, text) in enumerate(VISUAL_SEGMENTS):
+        if segment_id == "THREE_ACTIONS":
+            segment_cues = [
+                ("direction-a-action-01", 6_120, 7_580, "早睡十分钟。"),
+                ("direction-a-action-02", 7_650, 9_080, "拒绝一次迎合。"),
+                ("direction-a-action-03", 9_150, 10_820, "承认自己的不舒服。"),
+            ]
+        else:
+            segment_cues = [
+                (
+                    f"direction-a-caption-{index + 1:02d}",
+                    start_tick + 180,
+                    end_tick - 180,
+                    text,
+                )
+            ]
+        cue_ids = [cue_id for cue_id, _, _, _ in segment_cues]
         timeline_segments.append(
             {
                 "segment_id": segment_id,
@@ -195,27 +217,28 @@ def _editorial_request(
                     "motion": "none",
                 },
                 "narration": None,
-                "caption_cue_ids": [cue_id],
+                "caption_cue_ids": cue_ids,
                 "overlay_ids": [],
                 "transition": {"in": "cut", "out": "cut"},
                 "metadata": {
                     "scene_ids": ["DIRECTION_A_ATLAS"],
-                    "script_line_ids": [cue_id],
+                    "script_line_ids": cue_ids,
                 },
             }
         )
-        caption_cues.append(
-            {
-                "cue_id": cue_id,
-                "segment_id": segment_id,
-                "start_tick": start_tick + 180,
-                "end_tick": end_tick - 180,
-                "text": text,
-                "granularity": "sentence",
-                "words": [],
-                "highlight": None,
-            }
-        )
+        for cue_id, cue_start, cue_end, cue_text in segment_cues:
+            caption_cues.append(
+                {
+                    "cue_id": cue_id,
+                    "segment_id": segment_id,
+                    "start_tick": cue_start,
+                    "end_tick": cue_end,
+                    "text": cue_text,
+                    "granularity": "sentence",
+                    "words": [],
+                    "highlight": None,
+                }
+            )
     payload["timeline"] = {
         "model": "narration_segments_v1",
         "timebase": {"ticks_per_second": 1000},
@@ -246,18 +269,24 @@ def _editorial_request(
     }
     payload["audio"]["cues"] = []
     payload["output_spec"]["duration_ticks"] = VISUAL_DURATION_TICKS
+    if mode is RenderMode.PREVIEW:
+        payload["output_spec"]["width"] = 720
+        payload["output_spec"]["height"] = 1280
+    else:
+        payload["output_spec"]["width"] = 1080
+        payload["output_spec"]["height"] = 1920
     extension = payload["extensions"][REMOTION_EXTENSION]
     extension.update(
         {
             "composition_id": EDITORIAL_PAPER_COMPOSITION_ID,
-            "visual_policy": "editorial_paper_collage_five_layout_v1",
-            "caption_policy": "sentence_two_line_integrated_v1",
+            "visual_policy": "editorial_unified_three_scene_types_v1",
+            "caption_policy": "sentence_two_line_fixed_safe_zone_v1",
             "template_id": EDITORIAL_PAPER_TEMPLATE_ID,
             "template_version": EDITORIAL_PAPER_TEMPLATE_VERSION,
-            "motion_preset": "editorial-purposeful",
-            "transition_preset": "paper-cut-column-wipe",
-            "caption_preset": "integrated-two-line",
-            "layout_sequence": list(EDITORIAL_PAPER_LAYOUTS),
+            "motion_preset": "editorial-unified-v1",
+            "transition_preset": "hard-cut-paper-reveal",
+            "caption_preset": "fixed-safe-zone-two-line",
+            "scene_type_sequence": list(EDITORIAL_PAPER_SCENE_SEQUENCE),
             "opening": {
                 "start_tick": 0,
                 "end_tick": 1200,
@@ -267,23 +296,23 @@ def _editorial_request(
         }
     )
     filename = (
-        "editorial-direction-a-preview.mp4"
+        "direction-a-unified-preview.mp4"
         if mode is RenderMode.PREVIEW
-        else "editorial-direction-a-final-experimental.mp4"
+        else "direction-a-unified-final-experimental.mp4"
     )
     payload["output"] = {
-        "artifact_id": f"editorial-direction-a-{mode.value}",
+        "artifact_id": f"direction-a-unified-{mode.value}",
         "role": "preview_video" if mode is RenderMode.PREVIEW else "local_experimental_master",
         "target": {
             "root": "project",
-            "path": f"08_render_合成/editorial-direction-a/{mode.value}/{filename}",
+            "path": f"08_render_合成/direction-a-unified/{mode.value}/{filename}",
         },
         "overwrite_policy": "fail_if_exists",
     }
     payload["metadata"] = {
         "created_at": "2026-08-01T04:30:00Z",
-        "created_by": "phase4b5-direction-a-fixture-adapter-v1",
-        "notes": "Visual-validation fixture using the approved text-free Direction A atlas and synthetic Chinese copy.",
+        "created_by": "phase4b6-direction-a-unified-adapter-v1",
+        "notes": "Unified 9:16 three-scene-system fixture using the approved text-free Direction A atlas and synthetic Chinese copy.",
     }
     payload["request_hash"] = "0" * 64
     payload["request_id"] = "pending"
@@ -291,13 +320,13 @@ def _editorial_request(
     payload["request_hash"] = digest
     payload["request_id"] = request_id_from_hash(digest)
     expanded_resolver = RootResolver(
-        {**resolver.bindings, "phase4b5_visual_assets": atlas_root.resolve()}
+        {**resolver.bindings, "phase4b6_visual_assets": atlas_root.resolve()}
     )
     return render_request_from_dict(payload), expanded_resolver
 
 
 def _visual_validation_final_mix(project: Path) -> Path:
-    target = project / "06_music_音乐" / "phase4b5-direction-a-final-mix.wav"
+    target = project / "06_music_音乐" / "phase4b6-direction-a-final-mix.wav"
     _write_pcm_wave(
         target,
         duration_seconds=18,
@@ -329,25 +358,29 @@ def _composition_discovery(renderer: Path, props_path: Path) -> dict[str, Any]:
     }
 
 
-def _render_layout_stills(
+def _render_unified_stills(
     renderer: Path,
     project: Path,
     props_path: Path,
     request: Any,
 ) -> dict[str, Any]:
-    output = project / "08_render_合成" / "editorial-direction-a" / "stills"
+    output = project / "08_render_合成" / "direction-a-unified" / "stills"
     output.mkdir(parents=True, exist_ok=False)
     props = json.loads(props_path.read_text(encoding="utf-8"))
     segments = props["segments"]
     records: list[dict[str, Any]] = []
-    for layout_index, layout in enumerate(EDITORIAL_PAPER_LAYOUTS):
-        candidate_indexes = list(range(layout_index, len(segments), len(EDITORIAL_PAPER_LAYOUTS)))
-        if not candidate_indexes:
-            raise SmokeFixtureError(f"frozen fixture does not exercise layout {layout}")
-        segment_index = candidate_indexes[-1] if layout_index == 0 else candidate_indexes[0]
-        segment = segments[segment_index]
-        frame = (int(segment["startFrame"]) + int(segment["endFrame"])) // 2
-        target = output / f"layout-{layout_index + 1:02d}-{layout}.png"
+    frame_specs = (
+        ("frame-01-hook.png", "full-bleed-hook", 1_500, 0),
+        ("frame-02-detail.png", "editorial-detail", 4_500, 1),
+        ("frame-03-action-1.png", "sequential-action-1", 6_900, 2),
+        ("frame-04-action-2.png", "sequential-action-2", 8_350, 2),
+        ("frame-05-action-3.png", "sequential-action-3", 10_100, 2),
+        ("frame-06-turning.png", "full-bleed-turning", 12_500, 3),
+        ("frame-07-ending.png", "full-bleed-ending", 16_500, 4),
+    )
+    for filename, state, tick, segment_index in frame_specs:
+        frame = (tick * int(props["fps"]) + 500) // 1000
+        target = output / filename
         command = [
             "node",
             str(renderer / "scripts" / "render-still.mjs"),
@@ -373,7 +406,7 @@ def _render_layout_stills(
             env=dict(os.environ),
         )
         if completed.returncode != 0 or not target.is_file():
-            raise SmokeFixtureError(f"static frame render failed for {layout}")
+            raise SmokeFixtureError(f"static frame render failed for {state}")
         with Image.open(target) as image:
             image.load()
             dimensions_ok = image.size == (
@@ -384,8 +417,9 @@ def _render_layout_stills(
             opaque = image.mode != "RGBA" or image.getchannel("A").getextrema() == (255, 255)
         records.append(
             {
-                "layout": layout,
+                "state": state,
                 "segment_index": segment_index,
+                "tick": tick,
                 "frame": frame,
                 "path": str(target),
                 "bytes": target.stat().st_size,
@@ -396,8 +430,7 @@ def _render_layout_stills(
                 "passed": dimensions_ok and nonempty and opaque,
             }
         )
-    layout_sequence = props["rendererExtension"]["layoutSequence"]
-    assigned = [layout_sequence[index % len(layout_sequence)] for index in range(len(segments))]
+    scene_type_sequence = props["rendererExtension"]["sceneTypeSequence"]
     tokens = props["rendererExtension"]["theme"]["tokens"]
     caption = tokens["caption"]
     caption_height = (
@@ -405,19 +438,47 @@ def _render_layout_stills(
         * caption["maxLines"]
         + caption["paddingY"] * 2
     )
+    active_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (
+            renderer / "src" / "components" / "EditorialPaperScene.tsx",
+            renderer / "src" / "components" / "editorial-unified" / "FullBleedMetaphor.tsx",
+            renderer / "src" / "components" / "editorial-unified" / "EditorialDetail.tsx",
+            renderer / "src" / "components" / "editorial-unified" / "SequentialBuild.tsx",
+            renderer / "src" / "components" / "editorial-unified" / "UnifiedCaption.tsx",
+            renderer / "src" / "compositions" / "EditorialPaperCollage.tsx",
+        )
+    )
     checks = {
-        "five_unique_layouts": len(layout_sequence) == 5 and len(set(layout_sequence)) == 5,
-        "no_adjacent_layout_repeat": all(
-            assigned[index] != assigned[index - 1] for index in range(1, len(assigned))
-        ),
-        "visual_positions_cover_left_right_center_full": set(layout_sequence)
-        == set(EDITORIAL_PAPER_LAYOUTS),
-        "caption_height_at_most_22_percent": caption_height * 100
-        <= int(props["height"]) * 22,
+        "nine_by_sixteen_canvas": int(props["width"]) * 16
+        == int(props["height"]) * 9,
+        "final_canvas_1080_by_1920": (int(props["width"]), int(props["height"]))
+        == (1080, 1920),
+        "three_scene_types": len(set(scene_type_sequence)) == 3,
+        "unified_scene_sequence": tuple(scene_type_sequence)
+        == EDITORIAL_PAPER_SCENE_SEQUENCE,
+        "seven_validation_frames": len(records) == 7,
+        "sequential_build_has_three_states": sum(
+            record["state"].startswith("sequential-action-") for record in records
+        )
+        == 3,
+        "caption_height_at_most_20_percent": caption_height * 100
+        <= int(props["height"]) * 20,
         "caption_max_two_lines": caption["maxLines"] == 2
         and props["captionStyle"]["maxLines"] == 2,
+        "fixed_caption_safe_zone": props["rendererExtension"]["captionPreset"]
+        == "fixed-safe-zone-two-line",
         "transition_types_at_most_two": props["rendererExtension"]["transitionPreset"]
-        == "paper-cut-column-wipe",
+        == "hard-cut-paper-reveal",
+        "legacy_template_labels_absent": not any(
+            label in active_source
+            for label in (
+                "EDITORIAL / HOOK",
+                "EDITORIAL / 01",
+                "THREE CUTS / 03",
+                "AFTER / 05",
+            )
+        ),
         "direction_a_atlas_only_visual": all(
             segment["visualRefs"]
             == [
@@ -437,13 +498,16 @@ def _render_layout_stills(
         "schema_version": "1.0",
         "composition_id": EDITORIAL_PAPER_COMPOSITION_ID,
         "request_hash": request.request_hash,
-        "layout_sequence": layout_sequence,
-        "assigned_layouts": assigned,
+        "scene_type_sequence": scene_type_sequence,
+        "known_sequence_exception": (
+            "TURNING and ENDING are consecutive full-bleed scenes by the explicit "
+            "Phase 4B.6 preview structure; composition and Paper Reveal distinguish them."
+        ),
         "checks": checks,
         "frames": records,
         "passed": all(item["passed"] for item in records) and all(checks.values()),
     }
-    index = write_canonical_once(output / "editorial-static-frame-index.json", report)
+    index = write_canonical_once(output / "editorial-unified-static-frame-index.json", report)
     return {"index": str(index), "report": report}
 
 
@@ -453,7 +517,7 @@ def run_experiment(fixture_root: Path, renderer_project: Path) -> dict[str, Any]
     renderer = Path(renderer_project).expanduser().resolve()
     runtime = _runtime_root()
     shared, shared_record = _shared_assets(root)
-    project, semantic = _create_project(root, shared, "fixture-editorial-direction-a")
+    project, semantic = _create_project(root, shared, "fixture-direction-a-unified")
     _record_phase4a_approvals(project)
     final_mix = _visual_validation_final_mix(project)
     snapshot, snapshot_path, compatibility, compatibility_path, bindings = _derived_snapshot(
@@ -479,7 +543,7 @@ def run_experiment(fixture_root: Path, renderer_project: Path) -> dict[str, Any]
             mode=mode,
         )
         request_path = write_render_request(request, project / "manifests" / "requests")
-        attempt_id = f"phase4b5-editorial-{mode.value}-{fixture_token}"
+        attempt_id = f"phase4b6-unified-{mode.value}-{fixture_token}"
         context = RenderExecutionContext(
             resolver=resolver,
             attempts_directory=project / "08_render_合成" / "attempts",
@@ -516,7 +580,7 @@ def run_experiment(fixture_root: Path, renderer_project: Path) -> dict[str, Any]
             final_request = request
             final_props = props_path
     assert final_request is not None and final_props is not None
-    static_frames = _render_layout_stills(renderer, project, final_props, final_request)
+    static_frames = _render_unified_stills(renderer, project, final_props, final_request)
     final_qc = results["final"]["external_qc"]["report"]
     passed = (
         results["preview"]["external_qc"]["report"]["technical_status"] == "pass"
@@ -558,26 +622,26 @@ def run_experiment(fixture_root: Path, renderer_project: Path) -> dict[str, Any]
         },
         "visual_validation": {
             "direction_status": "DIRECTION_A_APPROVED",
-            "template_status": "REMOTION_TEMPLATE_VISUAL_VALIDATION_PENDING_USER_REVIEW",
+            "template_status": "PHASE_4B6_UNIFIED_PREVIEW_PENDING_USER_REVIEW",
             "machine_checks_passed": static_frames["report"]["passed"],
             "user_visual_approval_recorded": False,
         },
         "passed": passed,
     }
-    report_path = root / "phase-4b5-direction-a-report.json"
+    report_path = root / "phase-4b6-unified-report.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    human = root / "phase-4b5-direction-a-report.md"
+    human = root / "phase-4b6-unified-report.md"
     human.write_text(
         "\n".join(
             [
-                "# Phase 4B.5 Direction A Visual-Validation Report",
+                "# Phase 4B.6 Direction A Visual-Unification Report",
                 "",
                 f"- Technical result: {'PASS' if passed else 'FAIL'}",
                 "- Direction status: DIRECTION_A_APPROVED",
-                "- Template status: REMOTION_TEMPLATE_VISUAL_VALIDATION_PENDING_USER_REVIEW",
+                "- Template status: PHASE_4B6_UNIFIED_PREVIEW_PENDING_USER_REVIEW",
                 f"- Preview: {results['preview']['result']['status']}",
                 f"- Final: {results['final']['result']['status']}",
-                f"- Five-layout composition machine check: {'PASS' if static_frames['report']['passed'] else 'FAIL'}",
+                f"- Unified-system composition machine check: {'PASS' if static_frames['report']['passed'] else 'FAIL'}",
                 f"- Technical QC: {final_qc['technical_status']}",
                 f"- Public release allowed: {str(final_qc['public_release_allowed']).lower()}",
                 f"- Rights hold: {RIGHTS_HOLD}",
@@ -604,7 +668,7 @@ def main() -> int:
         json.dumps(
             {
                 "passed": report["passed"],
-                "report": str(Path(args.fixture_dir).resolve() / "phase-4b5-direction-a-report.json"),
+                "report": str(Path(args.fixture_dir).resolve() / "phase-4b6-unified-report.json"),
                 "preview_sha256": report["preview"]["result"]["output"][0]["sha256"],
                 "final_sha256": report["final"]["result"]["output"][0]["sha256"],
                 "static_frames_passed": report["static_frames"]["report"]["passed"],

@@ -1,15 +1,21 @@
 import type { ContractProps } from "./types";
 import type { PaperCollageTheme } from "./paper-collage-types";
 
-export const EDITORIAL_LAYOUTS = [
-  "split-column",
-  "scale-contrast",
-  "staggered-notes",
-  "full-bleed-turn",
-  "quiet-asymmetry",
+export const EDITORIAL_SCENE_TYPES = [
+  "full-bleed-metaphor",
+  "editorial-detail",
+  "sequential-build",
 ] as const;
 
-export type EditorialLayout = (typeof EDITORIAL_LAYOUTS)[number];
+export const EDITORIAL_SCENE_SEQUENCE = [
+  "full-bleed-metaphor",
+  "editorial-detail",
+  "sequential-build",
+  "full-bleed-metaphor",
+  "full-bleed-metaphor",
+] as const;
+
+export type EditorialSceneType = (typeof EDITORIAL_SCENE_TYPES)[number];
 
 export type EditorialPaperCollageProps = Omit<ContractProps, "rendererExtension"> & {
   rendererExtension: {
@@ -17,7 +23,7 @@ export type EditorialPaperCollageProps = Omit<ContractProps, "rendererExtension"
     compositionId: "EditorialPaperCollageV1";
     template: {
       id: "editorial-paper-collage-v1";
-      version: "0.1.0-experimental";
+      version: "0.2.0-experimental";
     };
     theme: {
       assetId: string;
@@ -25,11 +31,11 @@ export type EditorialPaperCollageProps = Omit<ContractProps, "rendererExtension"
       sha256: string;
       tokens: PaperCollageTheme;
     };
-    motionPreset: "editorial-purposeful";
-    transitionPreset: "paper-cut-column-wipe";
-    captionPreset: "integrated-two-line";
+    motionPreset: "editorial-unified-v1";
+    transitionPreset: "hard-cut-paper-reveal";
+    captionPreset: "fixed-safe-zone-two-line";
     requiredCapabilities: string[];
-    layoutSequence: EditorialLayout[];
+    sceneTypeSequence: EditorialSceneType[];
     opening: {
       startFrame: number;
       endFrame: number;
