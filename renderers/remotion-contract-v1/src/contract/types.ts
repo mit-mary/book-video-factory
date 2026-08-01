@@ -1,5 +1,9 @@
 import type { Caption } from "@remotion/captions";
 
+export type ContractCompositionId =
+  | "ContractConformanceV1"
+  | "PaperCollageVisualV1";
+
 export type ContractSegment = {
   segmentId: string;
   startFrame: number;
@@ -46,6 +50,6 @@ export type ContractProps = {
   assetBase: string;
   rendererExtension: {
     schemaVersion: "1.0";
-    compositionId: "ContractConformanceV1";
+    compositionId: ContractCompositionId;
   };
 };
